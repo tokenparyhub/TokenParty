@@ -4,6 +4,8 @@ import type { Provider } from "../types/config.js";
 import { nanoid } from "nanoid";
 import { writeLog, headersToRecord } from "../store/log-writer.js";
 import { recordRequest } from "../metrics/collector.js";
+import { createGunzip, createInflate, createBrotliDecompress, createZstdDecompress } from "node:zlib";
+import { Readable } from "node:stream";
 
 export type EntryProtocol = "openai" | "anthropic";
 
@@ -83,7 +85,7 @@ export async function forwardRequest(
       c.header("Connection", "keep-alive");
 
       return streamSSE(c, async (s) => {
-        const reader = response.body!.getReader();
+        const reader = decompressResponse(response).getReader();
         const decoder = new TextDecoder();
         let buffer = "";
         let fullContent = "";
@@ -201,7 +203,7 @@ export async function forwardRequest(
       });
     }
 
-    const responseBody = await response.json();
+    const responseBody = await decompressJson(response);
     const usage = extractUsage(responseBody, provider.type);
 
     writeLog(requestId, {
@@ -431,4 +433,41 @@ function extractUsageFromChunk(parsed: any, providerType: string) {
     }
   }
   return undefined;
+}
+
+async function decompressJson(response: Response): Promise<any> {
+  const encoding = response.headers.get("content-encoding");
+  if (!encoding || !["zstd"].includes(encoding)) {
+    return response.json();
+  }
+  const stream = decompressResponse(response);
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  return JSON.parse(text);
+}
+
+function decompressResponse(response: Response): ReadableStream<Uint8Array> {
+  const encoding = response.headers.get("content-encoding");
+  if (!encoding || !response.body) return response.body!;
+
+  const decompressors: Record<string, () => NodeJS.ReadWriteStream> = {
+    gzip: createGunzip,
+    deflate: createInflate,
+    br: createBrotliDecompress,
+    zstd: createZstdDecompress,
+  };
+
+  const create = decompressors[encoding];
+  if (!create) return response.body;
+
+  const decompressor = create();
+  const nodeStream = Readable.fromWeb(response.body as any);
+  const decompressed = nodeStream.pipe(decompressor) as unknown as Readable;
+  return Readable.toWeb(decompressed) as ReadableStream<Uint8Array>;
 }
