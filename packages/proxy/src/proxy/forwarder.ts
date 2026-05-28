@@ -23,8 +23,10 @@ export async function forwardRequest(
   const entry = entryProtocol ?? provider.type;
   const needsStreamConversion = isStreaming && entry !== provider.type;
 
-  // Request usage in streaming for OpenAI-compatible APIs
-  if (isStreaming && provider.type === "openai" && !body.stream_options) {
+  const isResponsesApi = !!body?.input && !body?.messages;
+
+  // Request usage in streaming for OpenAI chat completions (not responses API)
+  if (isStreaming && provider.type === "openai" && !isResponsesApi && !body.stream_options) {
     body.stream_options = { include_usage: true };
   }
 
@@ -84,6 +86,7 @@ export async function forwardRequest(
         let rawEvents: any[] = [];
         let usage: { input_tokens: number; output_tokens: number } | undefined;
         let chunkId = `chatcmpl-${requestId}`;
+        const o2aConverter = new OpenaiToAnthropicStreamConverter();
 
         try {
           while (true) {
@@ -119,7 +122,7 @@ export async function forwardRequest(
                     usage = { ...usage, input_tokens: parsed.message.usage.input_tokens ?? 0 } as any;
                   }
                 } else if (needsStreamConversion && provider.type === "openai" && entry === "anthropic") {
-                  const converted = convertOpenaiChunkToAnthropic(parsed, model);
+                  const converted = o2aConverter.convert(parsed, model);
                   if (converted) {
                     for (const event of converted.events) {
                       await s.writeSSE({ event: event.type, data: JSON.stringify(event.data) });
@@ -131,11 +134,18 @@ export async function forwardRequest(
                   }
                 } else {
                   // Same protocol, pass through — extract content for log
-                  await s.writeSSE({ data });
-                  if (provider.type === "anthropic" && parsed.type === "content_block_delta" && parsed.delta?.text) {
-                    fullContent += parsed.delta.text;
+                  if (parsed.type?.startsWith("response.")) {
+                    await s.writeSSE({ event: parsed.type, data });
+                  } else {
+                    await s.writeSSE({ data });
+                  }
+                  if (provider.type === "anthropic" && parsed.type === "content_block_delta") {
+                    if (parsed.delta?.text) fullContent += parsed.delta.text;
+                    if (parsed.delta?.thinking) fullContent += parsed.delta.thinking;
                   } else if (provider.type === "openai" && parsed.choices?.[0]?.delta?.content) {
                     fullContent += parsed.choices[0].delta.content;
+                  } else if (parsed.type === "response.output_text.delta" && parsed.delta) {
+                    fullContent += parsed.delta;
                   }
                   usage = extractUsageFromChunk(parsed, provider.type) ?? usage;
                 }
@@ -147,6 +157,13 @@ export async function forwardRequest(
           if (!usage) {
             for (let i = rawEvents.length - 1; i >= 0; i--) {
               const evt = rawEvents[i];
+              if (evt.type === "response.completed" && evt.response?.usage) {
+                usage = {
+                  input_tokens: evt.response.usage.input_tokens ?? 0,
+                  output_tokens: evt.response.usage.output_tokens ?? 0,
+                };
+                break;
+              }
               if (evt.usage && typeof evt.usage === "object" && (evt.usage.prompt_tokens || evt.usage.completion_tokens || evt.usage.input_tokens || evt.usage.output_tokens || evt.usage.total_tokens)) {
                 usage = {
                   input_tokens: evt.usage.prompt_tokens ?? evt.usage.input_tokens ?? 0,
@@ -279,88 +296,105 @@ function convertAnthropicChunkToOpenai(parsed: any, model: string, id: string) {
 
 // --- OpenAI SSE chunk → Anthropic SSE events ---
 
-let _openaiMsgId = "";
-let _openaiInputTokens = 0;
+class OpenaiToAnthropicStreamConverter {
+  private started = false;
+  private msgId = "";
+  private inputTokens = 0;
 
-function convertOpenaiChunkToAnthropic(parsed: any, model: string) {
-  const events: { type: string; data: any }[] = [];
-  let content = "";
+  convert(parsed: any, model: string): { events: { type: string; data: any }[]; content: string } | null {
+    const events: { type: string; data: any }[] = [];
+    let content = "";
 
-  const choice = parsed.choices?.[0];
-  if (!choice) {
-    if (parsed.usage) {
-      _openaiInputTokens = parsed.usage.prompt_tokens ?? 0;
+    const choice = parsed.choices?.[0];
+    if (!choice) {
+      if (parsed.usage && typeof parsed.usage === "object" && (parsed.usage.prompt_tokens || parsed.usage.completion_tokens)) {
+        this.inputTokens = parsed.usage.prompt_tokens ?? 0;
+        events.push({
+          type: "message_delta",
+          data: {
+            type: "message_delta",
+            delta: {},
+            usage: {
+              input_tokens: parsed.usage.prompt_tokens ?? 0,
+              output_tokens: parsed.usage.completion_tokens ?? 0,
+            },
+          },
+        });
+        return { events, content: "" };
+      }
+      return null;
     }
-    return null;
-  }
 
-  if (choice.delta?.role === "assistant") {
-    _openaiMsgId = parsed.id ?? `msg_${Date.now()}`;
-    events.push({
-      type: "message_start",
-      data: {
+    if (!this.started) {
+      this.started = true;
+      this.msgId = parsed.id ?? `msg_${Date.now()}`;
+      events.push({
         type: "message_start",
-        message: {
-          id: _openaiMsgId,
-          type: "message",
-          role: "assistant",
-          model,
-          content: [],
-          usage: { input_tokens: _openaiInputTokens, output_tokens: 0 },
+        data: {
+          type: "message_start",
+          message: {
+            id: this.msgId,
+            type: "message",
+            role: "assistant",
+            model,
+            content: [],
+            usage: { input_tokens: this.inputTokens, output_tokens: 0 },
+          },
         },
-      },
-    });
-    events.push({
-      type: "content_block_start",
-      data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-    });
-  }
+      });
+      events.push({
+        type: "content_block_start",
+        data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      });
+    }
 
-  if (choice.delta?.content) {
-    content = choice.delta.content;
-    events.push({
-      type: "content_block_delta",
-      data: {
+    if (choice.delta?.content) {
+      content = choice.delta.content;
+      events.push({
         type: "content_block_delta",
-        index: 0,
-        delta: { type: "text_delta", text: content },
-      },
-    });
-  }
+        data: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: content },
+        },
+      });
+    }
 
-  if (choice.finish_reason) {
-    const stopReason = choice.finish_reason === "stop" ? "end_turn"
-      : choice.finish_reason === "length" ? "max_tokens" : "end_turn";
-    events.push({
-      type: "content_block_stop",
-      data: { type: "content_block_stop", index: 0 },
-    });
-    events.push({
-      type: "message_delta",
-      data: {
+    if (choice.finish_reason) {
+      const stopReason = choice.finish_reason === "stop" ? "end_turn"
+        : choice.finish_reason === "length" ? "max_tokens" : "end_turn";
+      events.push({
+        type: "content_block_stop",
+        data: { type: "content_block_stop", index: 0 },
+      });
+      events.push({
         type: "message_delta",
-        delta: { stop_reason: stopReason },
-        usage: parsed.usage ? {
-          input_tokens: parsed.usage.prompt_tokens ?? 0,
-          output_tokens: parsed.usage.completion_tokens ?? 0,
-        } : { output_tokens: 0 },
-      },
-    });
-  }
+        data: {
+          type: "message_delta",
+          delta: { stop_reason: stopReason },
+          usage: parsed.usage ? {
+            input_tokens: parsed.usage.prompt_tokens ?? 0,
+            output_tokens: parsed.usage.completion_tokens ?? 0,
+          } : { output_tokens: 0 },
+        },
+      });
+    }
 
-  return events.length > 0 ? { events, content } : null;
+    return events.length > 0 ? { events, content } : null;
+  }
 }
 
 // --- Usage extraction ---
 
 function extractUsage(body: any, providerType: string) {
-  if (providerType === "openai" && body?.usage) {
+  if (!body?.usage) return undefined;
+  if (providerType === "openai") {
     return {
-      input_tokens: body.usage.prompt_tokens ?? 0,
-      output_tokens: body.usage.completion_tokens ?? 0,
+      input_tokens: body.usage.prompt_tokens ?? body.usage.input_tokens ?? 0,
+      output_tokens: body.usage.completion_tokens ?? body.usage.output_tokens ?? 0,
     };
   }
-  if (providerType === "anthropic" && body?.usage) {
+  if (providerType === "anthropic") {
     return {
       input_tokens: body.usage.input_tokens ?? 0,
       output_tokens: body.usage.output_tokens ?? 0,
@@ -370,11 +404,19 @@ function extractUsage(body: any, providerType: string) {
 }
 
 function extractUsageFromChunk(parsed: any, providerType: string) {
-  if (providerType === "openai" && parsed.usage) {
-    return {
-      input_tokens: parsed.usage.prompt_tokens ?? 0,
-      output_tokens: parsed.usage.completion_tokens ?? 0,
-    };
+  if (providerType === "openai") {
+    if (parsed.type === "response.completed" && parsed.response?.usage) {
+      return {
+        input_tokens: parsed.response.usage.input_tokens ?? 0,
+        output_tokens: parsed.response.usage.output_tokens ?? 0,
+      };
+    }
+    if (parsed.usage) {
+      return {
+        input_tokens: parsed.usage.prompt_tokens ?? parsed.usage.input_tokens ?? 0,
+        output_tokens: parsed.usage.completion_tokens ?? parsed.usage.output_tokens ?? 0,
+      };
+    }
   }
   if (providerType === "anthropic") {
     if (parsed.type === "message_delta" && parsed.usage) {

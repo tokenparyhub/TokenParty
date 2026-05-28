@@ -151,9 +151,7 @@ export default function Requests() {
                 {resLog.streaming ? (
                   <>
                     <Section title="Response Content" defaultOpen>
-                      <div className="bg-green-50 border border-green-200 rounded p-3 whitespace-pre-wrap">
-                        {resLog.streamContent || <span className="text-gray-400 italic">No content captured</span>}
-                      </div>
+                      <StreamingContent events={resLog.body} fallback={resLog.streamContent} />
                     </Section>
                     {resLog.body && Array.isArray(resLog.body) && resLog.body.length > 0 && (
                       <Section title={`SSE Events (${resLog.body.length})`}>
@@ -174,9 +172,12 @@ export default function Requests() {
                     )}
                     {resLog.body?.choices?.[0]?.message?.content && (
                       <Section title="Response Content" defaultOpen>
-                        <div className="bg-green-50 border border-green-200 rounded p-3 whitespace-pre-wrap">
-                          {resLog.body.choices[0].message.content}
-                        </div>
+                        <ContentBlocks blocks={parseThinkTags(resLog.body.choices[0].message.content)} />
+                      </Section>
+                    )}
+                    {resLog.body?.object === "response" && resLog.body?.output && (
+                      <Section title="Response Content" defaultOpen>
+                        <ResponsesApiOutput output={resLog.body.output} />
                       </Section>
                     )}
                     <Section title="Raw JSON">
@@ -259,6 +260,16 @@ function ResponseContent({ content }: { content: any[] }) {
   return (
     <div className="space-y-2">
       {content.map((block: any, i: number) => {
+        if (block.type === "thinking") {
+          return (
+            <div key={i} className="bg-gray-50 border border-gray-300 rounded p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="px-1.5 py-0.5 rounded text-xs bg-gray-200 text-gray-600 font-medium">Thinking</span>
+              </div>
+              <div className="whitespace-pre-wrap text-gray-600 text-sm">{block.thinking}</div>
+            </div>
+          );
+        }
         if (block.type === "text") {
           return <div key={i} className="bg-green-50 border border-green-200 rounded p-3 whitespace-pre-wrap">{block.text}</div>;
         }
@@ -276,6 +287,147 @@ function ResponseContent({ content }: { content: any[] }) {
   );
 }
 
+// --- Responses API Output ---
+
+function ResponsesApiOutput({ output }: { output: any[] }) {
+  if (!output || output.length === 0) return <div className="text-gray-400 italic">No output</div>;
+  return (
+    <div className="space-y-2">
+      {output.map((item: any, i: number) => {
+        if (item.type === "message" && item.content) {
+          return (
+            <div key={i}>
+              {item.content.map((part: any, j: number) => {
+                if (part.type === "output_text") {
+                  return <div key={j} className="bg-green-50 border border-green-200 rounded p-3 whitespace-pre-wrap">{part.text}</div>;
+                }
+                if (part.type === "refusal") {
+                  return <div key={j} className="bg-red-50 border border-red-200 rounded p-3 whitespace-pre-wrap">{part.refusal}</div>;
+                }
+                return <pre key={j} className="bg-gray-50 p-3 rounded whitespace-pre-wrap">{JSON.stringify(part, null, 2)}</pre>;
+              })}
+            </div>
+          );
+        }
+        if (item.type === "reasoning") {
+          const summaryText = item.summary?.map((s: any) => s.text).filter(Boolean).join("\n");
+          if (!summaryText) return null;
+          return (
+            <div key={i} className="bg-gray-50 border border-gray-300 rounded p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="px-1.5 py-0.5 rounded text-xs bg-gray-200 text-gray-600 font-medium">Reasoning</span>
+              </div>
+              <div className="whitespace-pre-wrap text-gray-600 text-sm">{summaryText}</div>
+            </div>
+          );
+        }
+        if (item.type === "function_call") {
+          return (
+            <div key={i} className="bg-purple-50 border border-purple-200 rounded p-3">
+              <div className="font-medium text-purple-700 mb-1">Function: {item.name}</div>
+              <pre className="whitespace-pre-wrap text-xs">{item.arguments}</pre>
+            </div>
+          );
+        }
+        return <pre key={i} className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-xs">{JSON.stringify(item, null, 2)}</pre>;
+      })}
+    </div>
+  );
+}
+
+// --- Streaming Content (reconstructed from SSE events) ---
+
+function parseThinkTags(text: string): { type: string; content: string }[] {
+  const blocks: { type: string; content: string }[] = [];
+  const regex = /<think>([\s\S]*?)<\/think>/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index).trim();
+      if (before) blocks.push({ type: "text", content: before });
+    }
+    const thinking = match[1].trim();
+    if (thinking) blocks.push({ type: "thinking", content: thinking });
+    lastIndex = regex.lastIndex;
+  }
+  const rest = text.slice(lastIndex).trim();
+  if (rest) blocks.push({ type: "text", content: rest });
+  return blocks;
+}
+
+function StreamingContent({ events, fallback }: { events?: any[]; fallback?: string }) {
+  if (!events || !Array.isArray(events) || events.length === 0) {
+    if (!fallback) return <div className="text-gray-400 italic">No content captured</div>;
+    return <ContentBlocks blocks={parseThinkTags(fallback)} />;
+  }
+
+  // Anthropic format: reconstruct from content_block_start/delta events
+  const hasAnthropicBlocks = events.some((e) => e.type === "content_block_start");
+  if (hasAnthropicBlocks) {
+    const blocks: { type: string; content: string }[] = [];
+    let currentIndex = -1;
+
+    for (const evt of events) {
+      if (evt.type === "content_block_start" && evt.content_block) {
+        currentIndex = evt.index ?? blocks.length;
+        blocks[currentIndex] = { type: evt.content_block.type ?? "text", content: "" };
+      } else if (evt.type === "content_block_delta") {
+        const idx = evt.index ?? currentIndex;
+        if (idx >= 0 && blocks[idx]) {
+          if (evt.delta?.text) blocks[idx].content += evt.delta.text;
+          if (evt.delta?.thinking) blocks[idx].content += evt.delta.thinking;
+        }
+      }
+    }
+
+    const validBlocks = blocks.filter((b) => b && b.content);
+    if (validBlocks.length > 0) return <ContentBlocks blocks={validBlocks} />;
+  }
+
+  // OpenAI Responses API: reconstruct from response.output_text.delta events
+  const hasResponsesApi = events.some((e) => e.type?.startsWith("response."));
+  if (hasResponsesApi) {
+    let textContent = "";
+    for (const evt of events) {
+      if (evt.type === "response.output_text.delta" && evt.delta) {
+        textContent += evt.delta;
+      }
+    }
+    if (textContent) return <ContentBlocks blocks={[{ type: "text", content: textContent }]} />;
+  }
+
+  // OpenAI Chat Completions: aggregate content from choices, then parse <think> tags
+  let fullContent = "";
+  for (const evt of events) {
+    const c = evt.choices?.[0]?.delta?.content;
+    if (c) fullContent += c;
+  }
+  if (fullContent) return <ContentBlocks blocks={parseThinkTags(fullContent)} />;
+
+  if (fallback) return <ContentBlocks blocks={parseThinkTags(fallback)} />;
+  return <div className="text-gray-400 italic">No content captured</div>;
+}
+
+function ContentBlocks({ blocks }: { blocks: { type: string; content: string }[] }) {
+  return (
+    <div className="space-y-2">
+      {blocks.map((block, i) =>
+        block.type === "thinking" ? (
+          <div key={i} className="bg-gray-50 border border-gray-300 rounded p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="px-1.5 py-0.5 rounded text-xs bg-gray-200 text-gray-600 font-medium">Thinking</span>
+            </div>
+            <div className="whitespace-pre-wrap text-gray-600 text-sm">{block.content}</div>
+          </div>
+        ) : (
+          <div key={i} className="bg-green-50 border border-green-200 rounded p-3 whitespace-pre-wrap">{block.content}</div>
+        )
+      )}
+    </div>
+  );
+}
+
 // --- SSE Event Row ---
 
 function SSEEventRow({ index, event }: { index: number; event: any }) {
@@ -286,10 +438,21 @@ function SSEEventRow({ index, event }: { index: number; event: any }) {
     message_start: "bg-blue-100 text-blue-700",
     content_block_start: "bg-cyan-100 text-cyan-700",
     content_block_delta: "bg-green-100 text-green-700",
+    thinking_delta: "bg-gray-200 text-gray-700",
     content_block_stop: "bg-gray-100 text-gray-600",
     message_delta: "bg-amber-100 text-amber-700",
     message_stop: "bg-gray-100 text-gray-600",
     "chat.completion.chunk": "bg-indigo-100 text-indigo-700",
+    "response.created": "bg-blue-100 text-blue-700",
+    "response.in_progress": "bg-blue-100 text-blue-700",
+    "response.completed": "bg-green-100 text-green-700",
+    "response.failed": "bg-red-100 text-red-700",
+    "response.output_item.added": "bg-cyan-100 text-cyan-700",
+    "response.output_item.done": "bg-gray-100 text-gray-600",
+    "response.content_part.added": "bg-cyan-100 text-cyan-700",
+    "response.content_part.done": "bg-gray-100 text-gray-600",
+    "response.output_text.delta": "bg-green-100 text-green-700",
+    "response.output_text.done": "bg-gray-100 text-gray-600",
   };
 
   const preview = getEventPreview(event);
@@ -314,10 +477,16 @@ function SSEEventRow({ index, event }: { index: number; event: any }) {
 }
 
 function getEventPreview(event: any): string {
+  if (event.type === "response.output_text.delta" && typeof event.delta === "string") return event.delta.slice(0, 100);
+  if (event.type === "response.completed" && event.response?.usage) return `tokens: in=${event.response.usage.input_tokens} out=${event.response.usage.output_tokens}`;
+  if (event.type === "response.output_item.added" && event.item?.type) return event.item.type;
+  if (event.type === "response.created" && event.response?.model) return event.response.model;
+  if (event.delta?.thinking) return event.delta.thinking.slice(0, 100);
   if (event.delta?.text) return event.delta.text.slice(0, 100);
   if (event.delta?.content) return event.delta.content.slice(0, 100);
   if (event.choices?.[0]?.delta?.content) return event.choices[0].delta.content.slice(0, 100);
   if (event.delta?.stop_reason) return `stop: ${event.delta.stop_reason}`;
+  if (event.content_block?.type) return event.content_block.type;
   if (event.message?.model) return event.message.model;
   if (event.usage) return `tokens: ${JSON.stringify(event.usage)}`;
   return "";
