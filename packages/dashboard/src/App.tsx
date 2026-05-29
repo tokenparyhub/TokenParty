@@ -3,12 +3,14 @@ import Overview from "./pages/Overview";
 import Requests from "./pages/Requests";
 import Providers from "./pages/Providers";
 import Keys from "./pages/Keys";
+import Settings from "./pages/Settings";
 
 const navItems = [
   { to: "/", label: "Overview" },
   { to: "/requests", label: "Requests" },
   { to: "/providers", label: "Providers" },
   { to: "/keys", label: "Keys" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export default function App() {
@@ -35,6 +37,7 @@ export default function App() {
           <Route path="/requests" element={<Requests />} />
           <Route path="/providers" element={<Providers />} />
           <Route path="/keys" element={<Keys />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

@@ -227,6 +227,7 @@ export async function forwardRequest(
             logFile,
             apiKeyIndex,
             pricing,
+            currency: provider.currency,
           });
         }
       });
@@ -257,6 +258,7 @@ export async function forwardRequest(
       logFile,
       apiKeyIndex,
       pricing,
+      currency: provider.currency,
     });
 
     if (response.status >= 500 && provider.fallback) {
@@ -285,6 +287,7 @@ export async function forwardRequest(
       error: error.message,
       apiKeyIndex,
       pricing,
+      currency: provider.currency,
     });
 
     if (provider.fallback) {

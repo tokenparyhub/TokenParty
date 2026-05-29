@@ -31,6 +31,7 @@ function runMigrations(db: Database.Database) {
       cache_read_tokens INTEGER DEFAULT 0,
       cache_write_tokens INTEGER DEFAULT 0,
       cost REAL DEFAULT 0,
+      currency TEXT DEFAULT 'USD',
       PRIMARY KEY (date, token_id, provider_id, model)
     );
 
@@ -49,7 +50,8 @@ function runMigrations(db: Database.Database) {
       log_file TEXT NOT NULL,
       error TEXT,
       api_key_index INTEGER DEFAULT 0,
-      cost REAL DEFAULT 0
+      cost REAL DEFAULT 0,
+      currency TEXT DEFAULT 'USD'
     );
 
     CREATE INDEX IF NOT EXISTS idx_request_timestamp ON request_index(timestamp);
@@ -74,6 +76,9 @@ function runMigrations(db: Database.Database) {
   if (!colNames.has("cache_write_tokens")) {
     db.exec(`ALTER TABLE request_index ADD COLUMN cache_write_tokens INTEGER DEFAULT 0`);
   }
+  if (!colNames.has("currency")) {
+    db.exec(`ALTER TABLE request_index ADD COLUMN currency TEXT DEFAULT 'USD'`);
+  }
 
   const dailyCols = db.prepare(`PRAGMA table_info(usage_daily)`).all() as { name: string }[];
   const dailyColNames = new Set(dailyCols.map((c) => c.name));
@@ -88,5 +93,8 @@ function runMigrations(db: Database.Database) {
   }
   if (!dailyColNames.has("cache_write_tokens")) {
     db.exec(`ALTER TABLE usage_daily ADD COLUMN cache_write_tokens INTEGER DEFAULT 0`);
+  }
+  if (!dailyColNames.has("currency")) {
+    db.exec(`ALTER TABLE usage_daily ADD COLUMN currency TEXT DEFAULT 'USD'`);
   }
 }
