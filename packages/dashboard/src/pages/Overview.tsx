@@ -16,8 +16,9 @@ export default function Overview() {
       existing.input_tokens += row.input_tokens;
       existing.output_tokens += row.output_tokens;
       existing.request_count += row.request_count;
+      existing.cost += row.cost ?? 0;
     } else {
-      acc.push({ ...row });
+      acc.push({ ...row, cost: row.cost ?? 0 });
     }
     return acc;
   }, []).sort((a, b) => a.date.localeCompare(b.date));
@@ -25,6 +26,7 @@ export default function Overview() {
   const totalRequests = stats.reduce((s, r) => s + r.request_count, 0);
   const totalInput = stats.reduce((s, r) => s + r.input_tokens, 0);
   const totalOutput = stats.reduce((s, r) => s + r.output_tokens, 0);
+  const totalCost = stats.reduce((s, r) => s + (r.cost ?? 0), 0);
 
   return (
     <div>
@@ -41,10 +43,11 @@ export default function Overview() {
         </select>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Requests" value={totalRequests.toLocaleString()} />
         <StatCard label="Input Tokens" value={totalInput.toLocaleString()} />
         <StatCard label="Output Tokens" value={totalOutput.toLocaleString()} />
+        <StatCard label="Total Cost" value={`$${totalCost.toFixed(4)}`} />
       </div>
 
       <div className="bg-white rounded-lg shadow p-4" style={{ height: 350 }}>

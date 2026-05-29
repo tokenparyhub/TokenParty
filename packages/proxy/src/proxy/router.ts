@@ -1,5 +1,6 @@
 import { getConfig } from "../config.js";
 import type { Provider, Token } from "../types/config.js";
+import { getModelId, getModelPricing } from "../types/config.js";
 
 export interface RouteResult {
   provider: Provider;
@@ -14,11 +15,11 @@ function isProviderAllowed(provider: Provider, allowedProviders: string[]): bool
   return false;
 }
 
-export function resolveProvider(model: string, token: Token): RouteResult | { error: string } {
+export function resolveProvider(model: string, token: Token): RouteResult & { pricing?: { inputPrice?: number; outputPrice?: number } } | { error: string } {
   const config = getConfig();
 
   const candidateProviders = config.providers.filter(
-    (p) => p.enabled && p.models.includes(model)
+    (p) => p.enabled && p.models.some((m) => getModelId(m) === model)
   );
 
   if (candidateProviders.length === 0) {
@@ -26,7 +27,10 @@ export function resolveProvider(model: string, token: Token): RouteResult | { er
   }
 
   const match = candidateProviders.find((p) => isProviderAllowed(p, token.allowedProviders));
-  if (match) return { provider: match };
+  if (match) {
+    const modelConfig = match.models.find((m) => getModelId(m) === model);
+    return { provider: match, pricing: modelConfig ? getModelPricing(modelConfig) : undefined };
+  }
 
   return { error: `Token not authorized for any provider serving model: ${model}` };
 }
@@ -39,7 +43,7 @@ export function listAvailableModels(token: Token): string[] {
     if (!provider.enabled) continue;
     if (!isProviderAllowed(provider, token.allowedProviders)) continue;
     for (const model of provider.models) {
-      models.add(model);
+      models.add(getModelId(model));
     }
   }
 

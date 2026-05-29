@@ -32,14 +32,14 @@ openaiRoutes.post("/chat/completions", async (c) => {
     return c.json({ error: result.error }, 400);
   }
 
-  const { provider } = result;
+  const { provider, pricing } = result;
 
   if (provider.type === "openai") {
-    return forwardRequest(c, provider, "/chat/completions", body, "openai");
+    return forwardRequest(c, provider, "/chat/completions", body, "openai", pricing);
   }
 
   const anthropicBody = openaiToAnthropic(body);
-  return forwardRequest(c, provider, "/v1/messages", anthropicBody, "openai");
+  return forwardRequest(c, provider, "/v1/messages", anthropicBody, "openai", pricing);
 });
 
 openaiRoutes.all("/*", async (c) => {
@@ -57,5 +57,5 @@ openaiRoutes.all("/*", async (c) => {
   }
 
   const path = new URL(c.req.url).pathname.replace(/^\/v1/, "");
-  return forwardRequest(c, result.provider, path, body, "openai");
+  return forwardRequest(c, result.provider, path, body, "openai", result.pricing);
 });

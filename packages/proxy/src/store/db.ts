@@ -28,6 +28,7 @@ function runMigrations(db: Database.Database) {
       request_count INTEGER DEFAULT 0,
       input_tokens INTEGER DEFAULT 0,
       output_tokens INTEGER DEFAULT 0,
+      cost REAL DEFAULT 0,
       PRIMARY KEY (date, token_id, provider_id, model)
     );
 
@@ -43,7 +44,8 @@ function runMigrations(db: Database.Database) {
       status INTEGER,
       log_file TEXT NOT NULL,
       error TEXT,
-      api_key_index INTEGER DEFAULT 0
+      api_key_index INTEGER DEFAULT 0,
+      cost REAL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_request_timestamp ON request_index(timestamp);
@@ -55,5 +57,14 @@ function runMigrations(db: Database.Database) {
   const colNames = new Set(columns.map((c) => c.name));
   if (!colNames.has("api_key_index")) {
     db.exec(`ALTER TABLE request_index ADD COLUMN api_key_index INTEGER DEFAULT 0`);
+  }
+  if (!colNames.has("cost")) {
+    db.exec(`ALTER TABLE request_index ADD COLUMN cost REAL DEFAULT 0`);
+  }
+
+  const dailyCols = db.prepare(`PRAGMA table_info(usage_daily)`).all() as { name: string }[];
+  const dailyColNames = new Set(dailyCols.map((c) => c.name));
+  if (!dailyColNames.has("cost")) {
+    db.exec(`ALTER TABLE usage_daily ADD COLUMN cost REAL DEFAULT 0`);
   }
 }

@@ -3,6 +3,7 @@ import { getConfig, updateConfig } from "../config.js";
 import { getDb } from "../store/db.js";
 import { readLog } from "../store/log-writer.js";
 import { nanoid } from "nanoid";
+import { getModelId } from "../types/config.js";
 
 export const apiRoutes = new Hono();
 
@@ -14,11 +15,12 @@ apiRoutes.get("/models", (c) => {
   for (const p of config.providers) {
     if (!p.enabled) continue;
     for (const m of p.models) {
-      const existing = models.find((x) => x.id === m);
+      const id = getModelId(m);
+      const existing = models.find((x) => x.id === id);
       if (existing) {
         existing.providers.push(p.id);
       } else {
-        models.push({ id: m, providers: [p.id] });
+        models.push({ id, providers: [p.id] });
       }
     }
   }

@@ -1,12 +1,21 @@
 import { z } from "zod";
 
+const ModelSchema = z.union([
+  z.string(),
+  z.object({
+    id: z.string(),
+    inputPrice: z.number().optional(),
+    outputPrice: z.number().optional(),
+  }),
+]);
+
 export const ProviderSchema = z.object({
   id: z.string(),
   type: z.enum(["openai", "anthropic"]),
   name: z.string(),
   apiKey: z.union([z.string(), z.array(z.string())]),
   baseUrl: z.string().url(),
-  models: z.array(z.string()).default([]),
+  models: z.array(ModelSchema).default([]),
   enabled: z.boolean().default(true),
 });
 
@@ -29,6 +38,17 @@ export const ConfigSchema = z.object({
   tokens: z.array(TokenSchema),
 });
 
+export type ModelConfig = z.infer<typeof ModelSchema>;
 export type Provider = z.infer<typeof ProviderSchema>;
 export type Token = z.infer<typeof TokenSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
+
+export function getModelId(model: ModelConfig): string {
+  return typeof model === "string" ? model : model.id;
+}
+
+export function getModelPricing(model: ModelConfig): { inputPrice?: number; outputPrice?: number } | undefined {
+  if (typeof model === "string") return undefined;
+  if (model.inputPrice === undefined && model.outputPrice === undefined) return undefined;
+  return { inputPrice: model.inputPrice, outputPrice: model.outputPrice };
+}

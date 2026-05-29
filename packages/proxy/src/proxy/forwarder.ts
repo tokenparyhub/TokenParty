@@ -31,7 +31,8 @@ export async function forwardRequest(
   provider: Provider,
   targetPath: string,
   transformedBody?: unknown,
-  entryProtocol?: EntryProtocol
+  entryProtocol?: EntryProtocol,
+  pricing?: { inputPrice?: number; outputPrice?: number }
 ) {
   const requestId = nanoid();
   const startTime = Date.now();
@@ -217,6 +218,7 @@ export async function forwardRequest(
             status: response.status,
             logFile,
             apiKeyIndex,
+            pricing,
           });
         }
       });
@@ -244,6 +246,7 @@ export async function forwardRequest(
       status: response.status,
       logFile,
       apiKeyIndex,
+      pricing,
     });
 
     return c.json(responseBody, response.status as any);
@@ -266,6 +269,7 @@ export async function forwardRequest(
       logFile,
       error: error.message,
       apiKeyIndex,
+      pricing,
     });
     return c.json({ error: "Upstream request failed", detail: error.message }, 502);
   }
