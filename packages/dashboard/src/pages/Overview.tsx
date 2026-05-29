@@ -15,11 +15,12 @@ export default function Overview() {
     if (existing) {
       existing.input_tokens += row.input_tokens;
       existing.output_tokens += row.output_tokens;
-      existing.cache_input_tokens += row.cache_input_tokens ?? 0;
+      existing.cache_read_tokens += row.cache_read_tokens ?? 0;
+      existing.cache_write_tokens += row.cache_write_tokens ?? 0;
       existing.request_count += row.request_count;
       existing.cost += row.cost ?? 0;
     } else {
-      acc.push({ ...row, cost: row.cost ?? 0, cache_input_tokens: row.cache_input_tokens ?? 0 });
+      acc.push({ ...row, cost: row.cost ?? 0, cache_read_tokens: row.cache_read_tokens ?? 0, cache_write_tokens: row.cache_write_tokens ?? 0 });
     }
     return acc;
   }, []).sort((a, b) => a.date.localeCompare(b.date));
@@ -27,7 +28,8 @@ export default function Overview() {
   const totalRequests = stats.reduce((s, r) => s + r.request_count, 0);
   const totalInput = stats.reduce((s, r) => s + r.input_tokens, 0);
   const totalOutput = stats.reduce((s, r) => s + r.output_tokens, 0);
-  const totalCacheInput = stats.reduce((s, r) => s + (r.cache_input_tokens ?? 0), 0);
+  const totalCacheRead = stats.reduce((s, r) => s + (r.cache_read_tokens ?? 0), 0);
+  const totalCacheWrite = stats.reduce((s, r) => s + (r.cache_write_tokens ?? 0), 0);
   const totalCost = stats.reduce((s, r) => s + (r.cost ?? 0), 0);
 
   return (
@@ -45,12 +47,15 @@ export default function Overview() {
         </select>
       </div>
 
-      <div className="grid grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-4">
         <StatCard label="Total Requests" value={totalRequests.toLocaleString()} />
         <StatCard label="Input Tokens" value={totalInput.toLocaleString()} />
-        <StatCard label="Cached Input" value={totalCacheInput.toLocaleString()} />
         <StatCard label="Output Tokens" value={totalOutput.toLocaleString()} />
-        <StatCard label="Total Cost" value={`$${totalCost.toFixed(4)}`} />
+      </div>
+      <div className="grid grid-cols-3 gap-4 mb-8">
+        <StatCard label="Cache Read" value={totalCacheRead.toLocaleString()} />
+        <StatCard label="Cache Write" value={totalCacheWrite.toLocaleString()} />
+        <StatCard label="Total Cost" value={totalCost.toFixed(4)} />
       </div>
 
       <div className="bg-white rounded-lg shadow p-4" style={{ height: 350 }}>

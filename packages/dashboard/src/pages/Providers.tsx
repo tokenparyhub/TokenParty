@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 
-type ModelConfig = string | { id: string; inputPrice?: number; outputPrice?: number; cacheInputPrice?: number };
+type ModelConfig = string | { id: string; inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number };
 
 interface Provider {
   id: string;
@@ -12,6 +12,7 @@ interface Provider {
   models: ModelConfig[];
   enabled: boolean;
   group?: string;
+  currency?: string;
   _apiKeysText?: string;
 }
 
@@ -22,7 +23,7 @@ function getModelId(m: ModelConfig): string {
 function normalizeModels(models: ModelConfig[]): ModelConfig[] {
   return models.map((m) => {
     if (typeof m === "string") return m;
-    if (m.inputPrice === undefined && m.outputPrice === undefined && m.cacheInputPrice === undefined) return m.id;
+    if (m.inputPrice === undefined && m.outputPrice === undefined && m.cacheReadPrice === undefined && m.cacheWritePrice === undefined) return m.id;
     return m;
   });
 }
@@ -255,46 +256,72 @@ export default function Providers() {
                 />
               </div>
               <div>
+                <label className="block text-sm text-gray-600 mb-1">Currency</label>
+                <select
+                  value={editing.currency ?? "USD"}
+                  onChange={(e) => setEditing({ ...editing, currency: e.target.value })}
+                  className="w-32 border rounded px-3 py-2 text-sm"
+                >
+                  <option value="USD">$ USD</option>
+                  <option value="CNY">¥ CNY</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm text-gray-600 mb-1">Models</label>
-                <div className="space-y-2">
-                  {(editing.models ?? []).map((m, i) => (
-                    <div key={i} className="flex gap-2 items-start">
-                      <input
-                        type="text"
-                        value={getModelId(m)}
-                        onChange={(e) => updateModel(i, "id", e.target.value)}
-                        placeholder="model-id"
-                        className="flex-1 border rounded px-2 py-1.5 text-sm font-mono"
-                      />
-                      <input
-                        type="number"
-                        value={typeof m === "object" ? (m.inputPrice ?? "") : ""}
-                        onChange={(e) => updateModel(i, "inputPrice", e.target.value ? Number(e.target.value) : undefined)}
-                        placeholder="Input $/1M"
-                        title="Input price ($ per 1M tokens)"
-                        className="w-24 border rounded px-2 py-1.5 text-sm"
-                      />
-                      <input
-                        type="number"
-                        value={typeof m === "object" ? (m.outputPrice ?? "") : ""}
-                        onChange={(e) => updateModel(i, "outputPrice", e.target.value ? Number(e.target.value) : undefined)}
-                        placeholder="Output $/1M"
-                        title="Output price ($ per 1M tokens)"
-                        className="w-24 border rounded px-2 py-1.5 text-sm"
-                      />
-                      <input
-                        type="number"
-                        value={typeof m === "object" ? (m.cacheInputPrice ?? "") : ""}
-                        onChange={(e) => updateModel(i, "cacheInputPrice", e.target.value ? Number(e.target.value) : undefined)}
-                        placeholder="Cache $/1M"
-                        title="Cached input price ($ per 1M tokens)"
-                        className="w-24 border rounded px-2 py-1.5 text-sm"
-                      />
-                      <button onClick={() => removeModel(i)} className="text-red-500 hover:text-red-700 px-1 py-1.5">×</button>
-                    </div>
-                  ))}
+                <div className="space-y-3">
+                  {(editing.models ?? []).map((m, i) => {
+                    const sym = (editing.currency ?? "USD") === "CNY" ? "¥" : "$";
+                    return (
+                      <div key={i} className="border rounded p-2 space-y-1.5">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={getModelId(m)}
+                            onChange={(e) => updateModel(i, "id", e.target.value)}
+                            placeholder="model-id"
+                            className="flex-1 border rounded px-2 py-1.5 text-sm font-mono"
+                          />
+                          <button onClick={() => removeModel(i)} className="text-red-500 hover:text-red-700 px-2 py-1.5 text-sm">×</button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          <input
+                            type="number"
+                            value={typeof m === "object" ? (m.inputPrice ?? "") : ""}
+                            onChange={(e) => updateModel(i, "inputPrice", e.target.value ? Number(e.target.value) : undefined)}
+                            placeholder={`Input ${sym}/1M`}
+                            title={`Input price (${sym} per 1M tokens)`}
+                            className="border rounded px-2 py-1 text-xs"
+                          />
+                          <input
+                            type="number"
+                            value={typeof m === "object" ? (m.outputPrice ?? "") : ""}
+                            onChange={(e) => updateModel(i, "outputPrice", e.target.value ? Number(e.target.value) : undefined)}
+                            placeholder={`Output ${sym}/1M`}
+                            title={`Output price (${sym} per 1M tokens)`}
+                            className="border rounded px-2 py-1 text-xs"
+                          />
+                          <input
+                            type="number"
+                            value={typeof m === "object" ? (m.cacheReadPrice ?? "") : ""}
+                            onChange={(e) => updateModel(i, "cacheReadPrice", e.target.value ? Number(e.target.value) : undefined)}
+                            placeholder={`Cache Read ${sym}/1M`}
+                            title={`Cached read price (${sym} per 1M tokens)`}
+                            className="border rounded px-2 py-1 text-xs"
+                          />
+                          <input
+                            type="number"
+                            value={typeof m === "object" ? (m.cacheWritePrice ?? "") : ""}
+                            onChange={(e) => updateModel(i, "cacheWritePrice", e.target.value ? Number(e.target.value) : undefined)}
+                            placeholder={`Cache Write ${sym}/1M`}
+                            title={`Cache write price (${sym} per 1M tokens)`}
+                            className="border rounded px-2 py-1 text-xs"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                   <button onClick={addModel} type="button" className="text-sm text-indigo-600 hover:underline">+ Add model</button>
-                  <div className="text-xs text-gray-400">Prices are in USD per 1M tokens (optional)</div>
+                  <div className="text-xs text-gray-400">Prices per 1M tokens (optional)</div>
                 </div>
               </div>
               <label className="flex items-center gap-2 text-sm">

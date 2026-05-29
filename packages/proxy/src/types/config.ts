@@ -6,7 +6,8 @@ const ModelSchema = z.union([
     id: z.string(),
     inputPrice: z.number().optional(),
     outputPrice: z.number().optional(),
-    cacheInputPrice: z.number().optional(),
+    cacheReadPrice: z.number().optional(),
+    cacheWritePrice: z.number().optional(),
   }),
 ]);
 
@@ -20,6 +21,7 @@ export const ProviderSchema = z.object({
   enabled: z.boolean().default(true),
   fallback: z.string().optional(),
   group: z.string().optional(),
+  currency: z.enum(["USD", "CNY"]).default("USD"),
 });
 
 export const TokenSchema = z.object({
@@ -54,8 +56,8 @@ export function getModelId(model: ModelConfig): string {
   return typeof model === "string" ? model : model.id;
 }
 
-export function getModelPricing(model: ModelConfig): { inputPrice?: number; outputPrice?: number; cacheInputPrice?: number } | undefined {
+export function getModelPricing(model: ModelConfig): { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number } | undefined {
   if (typeof model === "string") return undefined;
-  if (model.inputPrice === undefined && model.outputPrice === undefined && model.cacheInputPrice === undefined) return undefined;
-  return { inputPrice: model.inputPrice, outputPrice: model.outputPrice, cacheInputPrice: model.cacheInputPrice };
+  if (model.inputPrice === undefined && model.outputPrice === undefined && model.cacheReadPrice === undefined && model.cacheWritePrice === undefined) return undefined;
+  return { inputPrice: model.inputPrice, outputPrice: model.outputPrice, cacheReadPrice: model.cacheReadPrice, cacheWritePrice: model.cacheWritePrice };
 }
