@@ -8,7 +8,9 @@ import { nanoid } from "nanoid";
 import { writeLog, headersToRecord } from "../store/log-writer.js";
 import { recordRequest } from "../metrics/collector.js";
 import { createGunzip, createInflate, createBrotliDecompress, createZstdDecompress } from "node:zlib";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
+import { request as httpsRequest } from "node:https";
+import { request as httpRequest } from "node:http";
 
 export type EntryProtocol = "openai" | "anthropic";
 
@@ -91,6 +93,11 @@ export async function forwardRequest(
   const token = c.get("authToken");
 
   try {
+    // Same protocol streaming: use http.request for raw passthrough (no auto-decompression)
+    if (isStreaming && !needsStreamConversion) {
+      return await rawStreamPassthrough(c, targetUrl, upstreamHeaders, body, requestId, provider, model, token, startTime, logFile, apiKeyIndex, pricing);
+    }
+
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: upstreamHeaders,
@@ -101,6 +108,7 @@ export async function forwardRequest(
     const latencyMs = Date.now() - startTime;
 
     if (isStreaming && response.ok) {
+      // Protocol conversion: decompress, parse, convert, re-emit
       c.header("Content-Type", "text/event-stream");
       c.header("Cache-Control", "no-cache");
       c.header("Connection", "keep-alive");
@@ -136,7 +144,7 @@ export async function forwardRequest(
                 const parsed = JSON.parse(data);
                 rawEvents.push(parsed);
 
-                if (needsStreamConversion && provider.type === "anthropic" && entry === "openai") {
+                if (provider.type === "anthropic" && entry === "openai") {
                   const converted = convertAnthropicChunkToOpenai(parsed, model, chunkId);
                   if (converted) {
                     if (converted.content) fullContent += converted.content;
@@ -148,7 +156,7 @@ export async function forwardRequest(
                   if (parsed.type === "message_start" && parsed.message?.usage) {
                     usage = { ...usage, input_tokens: parsed.message.usage.input_tokens ?? 0, cache_read_tokens: parsed.message.usage.cache_read_input_tokens ?? 0, cache_write_tokens: parsed.message.usage.cache_creation_input_tokens ?? 0 } as any;
                   }
-                } else if (needsStreamConversion && provider.type === "openai" && entry === "anthropic") {
+                } else if (provider.type === "openai" && entry === "anthropic") {
                   const converted = o2aConverter.convert(parsed, model);
                   if (converted) {
                     for (const event of converted.events) {
@@ -159,28 +167,11 @@ export async function forwardRequest(
                   if (parsed.usage) {
                     usage = { input_tokens: parsed.usage.prompt_tokens ?? 0, output_tokens: parsed.usage.completion_tokens ?? 0, cache_read_tokens: parsed.usage.prompt_tokens_details?.cached_tokens ?? 0, cache_write_tokens: 0 };
                   }
-                } else {
-                  // Same protocol, pass through — preserve event type
-                  if (parsed.type) {
-                    await s.writeSSE({ event: parsed.type, data });
-                  } else {
-                    await s.writeSSE({ data });
-                  }
-                  if (provider.type === "anthropic" && parsed.type === "content_block_delta") {
-                    if (parsed.delta?.text) fullContent += parsed.delta.text;
-                    if (parsed.delta?.thinking) fullContent += parsed.delta.thinking;
-                  } else if (provider.type === "openai" && parsed.choices?.[0]?.delta?.content) {
-                    fullContent += parsed.choices[0].delta.content;
-                  } else if (parsed.type === "response.output_text.delta" && parsed.delta) {
-                    fullContent += parsed.delta;
-                  }
-                  usage = extractUsageFromChunk(parsed, provider.type) ?? usage;
                 }
               } catch {}
             }
           }
         } finally {
-          // Fallback: scan raw events for usage if not captured during streaming
           if (!usage) {
             for (let i = rawEvents.length - 1; i >= 0; i--) {
               const evt = rawEvents[i];
@@ -326,6 +317,160 @@ function tryFallback(
 
   console.log(`[tokenparty] Falling back from ${provider.id} to ${fallbackProvider.id} for model ${model}`);
   return forwardRequest(c, fallbackProvider, fallbackPath, body, entryProtocol, fallbackPricing);
+}
+
+function rawStreamPassthrough(
+  c: Context<AppEnv>,
+  targetUrl: string,
+  upstreamHeaders: Record<string, string>,
+  body: any,
+  requestId: string,
+  provider: Provider,
+  model: string,
+  token: { key: string },
+  startTime: number,
+  logFile: string,
+  apiKeyIndex: number,
+  pricing?: { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number },
+): Promise<Response> {
+  const url = new URL(targetUrl);
+  const reqFn = url.protocol === "https:" ? httpsRequest : httpRequest;
+
+  return new Promise((resolve, reject) => {
+    const req = reqFn(url, { method: "POST", headers: { ...upstreamHeaders, "content-type": "application/json" } }, (res) => {
+      const respHeaders: Record<string, string> = {};
+      for (const [key, val] of Object.entries(res.headers)) {
+        if (val) respHeaders[key] = Array.isArray(val) ? val.join(", ") : val;
+      }
+      const status = res.statusCode ?? 502;
+
+      // Passthrough all upstream headers, skip hop-by-hop
+      const passthroughHeaders = new Headers();
+      const hopByHop = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade"]);
+      for (const [key, val] of Object.entries(res.headers)) {
+        if (val && !hopByHop.has(key.toLowerCase())) {
+          passthroughHeaders.set(key, Array.isArray(val) ? val.join(", ") : val);
+        }
+      }
+
+      // Collect raw bytes for async log parsing
+      const rawChunks: Buffer[] = [];
+      const passthrough = new Transform({
+        transform(chunk, _encoding, callback) {
+          rawChunks.push(Buffer.from(chunk));
+          callback(null, chunk);
+        },
+        flush(callback) {
+          // Async parse for logging after stream ends
+          asyncParseBufferForLog(rawChunks, res.headers["content-encoding"] as string | undefined, requestId, respHeaders, provider, model, token, startTime, logFile, apiKeyIndex, pricing);
+          callback();
+        },
+      });
+
+      const stream = Readable.toWeb(res.pipe(passthrough) as unknown as Readable) as ReadableStream<Uint8Array>;
+      resolve(new Response(stream, { status, headers: passthroughHeaders }));
+    });
+
+    req.on("error", reject);
+    req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+function asyncParseBufferForLog(
+  rawChunks: Buffer[],
+  encoding: string | undefined,
+  requestId: string,
+  respHeaders: Record<string, string>,
+  provider: Provider,
+  model: string,
+  token: { key: string },
+  startTime: number,
+  logFile: string,
+  apiKeyIndex: number,
+  pricing?: { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number },
+) {
+  (async () => {
+    let text: string;
+    const combined = Buffer.concat(rawChunks);
+
+    if (encoding && ["gzip", "deflate", "br", "zstd"].includes(encoding)) {
+      const { promisify } = await import("node:util");
+      const zlib = await import("node:zlib");
+      const decompressFn: Record<string, (buf: Buffer) => Promise<Buffer>> = {
+        gzip: promisify(zlib.gunzip) as any,
+        deflate: promisify(zlib.inflate) as any,
+        br: promisify(zlib.brotliDecompress) as any,
+        zstd: promisify(zlib.zstdDecompress) as any,
+      };
+      text = (await decompressFn[encoding](combined)).toString("utf-8");
+    } else {
+      text = combined.toString("utf-8");
+    }
+
+    let fullContent = "";
+    let rawEvents: any[] = [];
+    let usage: { input_tokens: number; output_tokens: number; cache_read_tokens?: number; cache_write_tokens?: number } | undefined;
+
+    for (const line of text.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(data);
+        rawEvents.push(parsed);
+        if (provider.type === "anthropic" && parsed.type === "content_block_delta") {
+          if (parsed.delta?.text) fullContent += parsed.delta.text;
+          if (parsed.delta?.thinking) fullContent += parsed.delta.thinking;
+        } else if (provider.type === "openai" && parsed.choices?.[0]?.delta?.content) {
+          fullContent += parsed.choices[0].delta.content;
+        } else if (parsed.type === "response.output_text.delta" && parsed.delta) {
+          fullContent += parsed.delta;
+        }
+        usage = extractUsageFromChunk(parsed, provider.type) ?? usage;
+      } catch {}
+    }
+
+    if (!usage) {
+      for (let i = rawEvents.length - 1; i >= 0; i--) {
+        const evt = rawEvents[i];
+        if (evt.type === "response.completed" && evt.response?.usage) {
+          usage = { input_tokens: evt.response.usage.input_tokens ?? 0, output_tokens: evt.response.usage.output_tokens ?? 0, cache_read_tokens: evt.response.usage.cache_read_input_tokens ?? 0, cache_write_tokens: evt.response.usage.cache_creation_input_tokens ?? 0 };
+          break;
+        }
+        if (evt.usage && typeof evt.usage === "object" && (evt.usage.prompt_tokens || evt.usage.completion_tokens || evt.usage.input_tokens || evt.usage.output_tokens || evt.usage.total_tokens)) {
+          usage = { input_tokens: evt.usage.prompt_tokens ?? evt.usage.input_tokens ?? 0, output_tokens: evt.usage.completion_tokens ?? evt.usage.output_tokens ?? 0, cache_read_tokens: evt.usage.prompt_tokens_details?.cached_tokens ?? evt.usage.cache_read_input_tokens ?? 0, cache_write_tokens: evt.usage.cache_creation_input_tokens ?? 0 };
+          break;
+        }
+      }
+    }
+
+    writeLog(requestId, {
+      type: "response",
+      timestamp: Date.now(),
+      headers: respHeaders,
+      streaming: true,
+      streamContent: fullContent,
+      body: rawEvents,
+      usage,
+    });
+    recordRequest({
+      id: requestId,
+      tokenId: token.key,
+      providerId: provider.id,
+      model,
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+      cacheReadTokens: usage?.cache_read_tokens ?? 0,
+      cacheWriteTokens: usage?.cache_write_tokens ?? 0,
+      latencyMs: Date.now() - startTime,
+      status: 200,
+      logFile,
+      apiKeyIndex,
+      pricing,
+      currency: provider.currency,
+    });
+  })().catch((e) => console.error(`[tokenparty] async log parse error for ${requestId}:`, e));
 }
 
 // --- Anthropic SSE chunk → OpenAI SSE chunk ---

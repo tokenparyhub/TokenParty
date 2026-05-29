@@ -72,13 +72,33 @@ Open `http://localhost:3456` to access the dashboard — configure providers and
 
 ### Docker
 
-```bash
-# Quick deploy
-docker run -d -p 3456:3456 -v ~/.tokenparty:/root/.tokenparty --name tokenparty $(docker build -q .)
+Create these two files anywhere on your server:
 
-# Or with docker-compose
-docker compose up -d
+**docker-compose.yaml**
+```yaml
+services:
+  tokenparty:
+    image: nfqlt/node22
+    entrypoint: sh -c "npm install -g @zhouzhengchang/token-party && tokenparty"
+    ports:
+      - "3456:3456"
+    volumes:
+      - npm_global:/usr/local
+      - ./tokenparty-data:/root/.tokenparty
+    restart: unless-stopped
+
+volumes:
+  npm_global:
 ```
+
+```bash
+docker compose up -d        # start
+docker compose logs -f       # view logs
+docker compose restart       # restart — auto picks up new npm version
+docker compose down          # stop
+```
+
+The npm package is installed on first launch; subsequent restarts use the cached volume for instant startup. Restart the container to pick up new npm versions. The `tokenparty-data/` directory persists config, database, and logs. Edit `config.yaml` for hot-reloaded configuration changes.
 
 ### From source
 

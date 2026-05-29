@@ -1,8 +1,13 @@
 services:
   tokenparty:
-    build: .
+    image: nfqlt/node22
+    entrypoint: sh -c "npm install -g @zhouzhengchang/token-party && tokenparty"
     ports:
       - "3456:3456"
     volumes:
-      - ~/.tokenparty:/root/.tokenparty
+      - npm_global:/usr/local
+      - ./tokenparty-data:/root/.tokenparty
     restart: unless-stopped
+
+volumes:
+  npm_global:
