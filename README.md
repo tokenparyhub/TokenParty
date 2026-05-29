@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@zhouzhengchang/token-party"><img src="https://img.shields.io/npm/v/@zhouzhengchang/token-party?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Hono-4.6-E36002?logo=hono&logoColor=white" alt="Hono" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React" />
@@ -60,8 +61,18 @@ Running multiple AI providers across a team? TokenParty sits between your apps a
 
 ## Quick Start
 
+### Install from npm
+
 ```bash
-# Clone and install
+npm install -g @zhouzhengchang/token-party
+tokenparty
+```
+
+Open `http://localhost:3456` to access the dashboard — configure providers and tokens from there.
+
+### From source
+
+```bash
 git clone https://github.com/user/TokenParty.git
 cd TokenParty
 pnpm install
@@ -70,11 +81,10 @@ pnpm install
 cp packages/proxy/config.example.yaml packages/proxy/config.yaml
 # Edit config.yaml with your API keys
 
-# Launch everything
-./scripts/start.sh
+# Launch proxy + dashboard
+pnpm dev
+pnpm dev:dashboard
 ```
-
-The proxy starts on `http://localhost:3456` and the dashboard on `http://localhost:3457`.
 
 ### Use it immediately
 
@@ -239,12 +249,14 @@ The proxy uses `tsx watch` for instant reload on code changes. The dashboard use
 
 ## Roadmap
 
+- [x] npm package (`npm install -g @zhouzhengchang/token-party`)
+- [x] Load balancing across multiple keys per provider
+- [ ] Token allowedProviders grouping (`*` / `group:<type>`)
 - [ ] Cost estimation with per-model pricing config
-- [ ] Prometheus metrics export
-- [ ] Request caching / semantic dedup
-- [ ] Load balancing across multiple keys per provider
-- [ ] Admin authentication for dashboard
 - [ ] Docker image & docker-compose
+- [ ] Provider fallback / retry
+- [ ] Usage quota per token
+- [ ] Admin authentication for dashboard
 
 ## License
 

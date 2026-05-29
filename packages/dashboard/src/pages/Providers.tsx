@@ -5,11 +5,12 @@ interface Provider {
   id: string;
   type: string;
   name: string;
-  apiKey: string;
+  apiKey: string | string[];
   baseUrl: string;
   models: string[];
   enabled: boolean;
   _modelsText?: string;
+  _apiKeysText?: string;
 }
 
 export default function Providers() {
@@ -22,7 +23,7 @@ export default function Providers() {
 
   const save = async () => {
     if (!editing) return;
-    const { _modelsText, ...data } = editing;
+    const { _modelsText, _apiKeysText, ...data } = editing;
     if (isNew) {
       await api.createProvider(data);
     } else {
@@ -56,7 +57,7 @@ export default function Providers() {
             <div>
               <div className="font-medium">{p.name}</div>
               <div className="text-sm text-gray-500">{p.type} &middot; {p.baseUrl}</div>
-              <div className="text-xs text-gray-400 font-mono mt-1">API Key: {p.apiKey}</div>
+              <div className="text-xs text-gray-400 font-mono mt-1">API Key: {Array.isArray(p.apiKey) ? `${p.apiKey.length} keys` : p.apiKey}</div>
               <div className="text-xs text-gray-500 mt-1">Models: {p.models?.join(", ") || "none"}</div>
             </div>
             <div className="flex items-center gap-2">
@@ -88,7 +89,21 @@ export default function Providers() {
                 </select>
               </div>
               <Field label="Base URL" value={editing.baseUrl ?? ""} onChange={(v) => setEditing({ ...editing, baseUrl: v })} />
-              <Field label="API Key" value={editing.apiKey ?? ""} onChange={(v) => setEditing({ ...editing, apiKey: v })} />
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">API Keys (one per line, multiple keys enable load balancing)</label>
+                <textarea
+                  value={editing._apiKeysText ?? (Array.isArray(editing.apiKey) ? editing.apiKey.join("\n") : (editing.apiKey ?? ""))}
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    const keys = text.split("\n").map(s => s.trim()).filter(Boolean);
+                    setEditing({ ...editing, _apiKeysText: text, apiKey: keys.length === 1 ? keys[0] : keys });
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  rows={3}
+                  placeholder="sk-your-api-key"
+                  className="w-full border rounded px-3 py-2 text-sm font-mono"
+                />
+              </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Models (one per line)</label>
                 <textarea

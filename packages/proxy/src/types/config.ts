@@ -4,7 +4,7 @@ export const ProviderSchema = z.object({
   id: z.string(),
   type: z.enum(["openai", "anthropic"]),
   name: z.string(),
-  apiKey: z.string(),
+  apiKey: z.union([z.string(), z.array(z.string())]),
   baseUrl: z.string().url(),
   models: z.array(z.string()).default([]),
   enabled: z.boolean().default(true),

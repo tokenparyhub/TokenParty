@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { AppEnv } from "../types/env.js";
 import { streamSSE } from "hono/streaming";
 import type { Provider } from "../types/config.js";
 import { nanoid } from "nanoid";
@@ -9,8 +10,24 @@ import { Readable } from "node:stream";
 
 export type EntryProtocol = "openai" | "anthropic";
 
+const roundRobinCounters = new Map<string, number>();
+
+function selectApiKey(provider: Provider): { key: string; index: number } {
+  const keys = Array.isArray(provider.apiKey) ? provider.apiKey : [provider.apiKey];
+  if (keys.length === 1) return { key: keys[0], index: 0 };
+  const counter = (roundRobinCounters.get(provider.id) ?? -1) + 1;
+  const index = counter % keys.length;
+  roundRobinCounters.set(provider.id, counter);
+  return { key: keys[index], index };
+}
+
+function maskApiKey(key: string): string {
+  if (key.length <= 8) return "****";
+  return key.slice(0, 4) + "****" + key.slice(-4);
+}
+
 export async function forwardRequest(
-  c: Context,
+  c: Context<AppEnv>,
   provider: Provider,
   targetPath: string,
   transformedBody?: unknown,
@@ -33,6 +50,7 @@ export async function forwardRequest(
   }
 
   const targetUrl = `${provider.baseUrl}${targetPath}`;
+  const { key: selectedKey, index: apiKeyIndex } = selectApiKey(provider);
 
   const upstreamHeaders: Record<string, string> = {};
   const skipHeaders = new Set(["host", "connection", "content-length"]);
@@ -43,10 +61,10 @@ export async function forwardRequest(
   });
 
   if (provider.type === "openai") {
-    upstreamHeaders["authorization"] = `Bearer ${provider.apiKey}`;
+    upstreamHeaders["authorization"] = `Bearer ${selectedKey}`;
   } else if (provider.type === "anthropic") {
     delete upstreamHeaders["authorization"];
-    upstreamHeaders["x-api-key"] = provider.apiKey;
+    upstreamHeaders["x-api-key"] = selectedKey;
     upstreamHeaders["anthropic-version"] ??= "2023-06-01";
   }
 
@@ -63,7 +81,7 @@ export async function forwardRequest(
   const logFile = writeLog(requestId, {
     type: "request",
     timestamp: startTime,
-    headers: { ...reqHeaders, "x-target-url": targetUrl, "x-entry-protocol": entry, "x-provider-type": provider.type },
+    headers: { ...reqHeaders, "x-target-url": targetUrl, "x-entry-protocol": entry, "x-provider-type": provider.type, "x-api-key-index": String(apiKeyIndex), "x-api-key-used": maskApiKey(selectedKey) },
     body,
   });
 
@@ -198,6 +216,7 @@ export async function forwardRequest(
             latencyMs: Date.now() - startTime,
             status: response.status,
             logFile,
+            apiKeyIndex,
           });
         }
       });
@@ -224,6 +243,7 @@ export async function forwardRequest(
       latencyMs,
       status: response.status,
       logFile,
+      apiKeyIndex,
     });
 
     return c.json(responseBody, response.status as any);
@@ -245,6 +265,7 @@ export async function forwardRequest(
       status: 502,
       logFile,
       error: error.message,
+      apiKeyIndex,
     });
     return c.json({ error: "Upstream request failed", detail: error.message }, 502);
   }

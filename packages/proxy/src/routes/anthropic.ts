@@ -3,8 +3,9 @@ import { authMiddleware } from "../proxy/auth.js";
 import { forwardRequest } from "../proxy/forwarder.js";
 import { resolveProvider } from "../proxy/router.js";
 import { anthropicToOpenai } from "../adapters/anthropic-to-openai.js";
+import type { AppEnv } from "../types/env.js";
 
-export const anthropicRoutes = new Hono();
+export const anthropicRoutes = new Hono<AppEnv>();
 
 anthropicRoutes.use("/*", authMiddleware);
 

@@ -8,10 +8,8 @@ echo "========================================="
 echo ""
 
 # Ensure config exists
-if [ ! -f packages/proxy/config.yaml ]; then
-  echo "[init] config.yaml not found, copying from example..."
-  cp packages/proxy/config.example.yaml packages/proxy/config.yaml
-  echo "[init] Please edit packages/proxy/config.yaml with your API keys"
+if [ ! -f ~/.tokenparty/config.yaml ]; then
+  echo "[init] ~/.tokenparty/config.yaml not found, will be auto-created on first start."
   echo ""
 fi
 
@@ -22,7 +20,7 @@ sleep 1
 
 # Start proxy
 echo "[proxy] Starting on http://localhost:3456 ..."
-pnpm --filter proxy dev > /tmp/tokenparty-proxy.log 2>&1 &
+pnpm --filter @zhouzhengchang/token-party dev > /tmp/tokenparty-proxy.log 2>&1 &
 PROXY_PID=$!
 
 # Start dashboard

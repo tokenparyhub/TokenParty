@@ -11,6 +11,7 @@ export interface RequestRecord {
   status: number;
   logFile: string;
   error?: string;
+  apiKeyIndex?: number;
 }
 
 export function recordRequest(record: RequestRecord) {
@@ -19,12 +20,12 @@ export function recordRequest(record: RequestRecord) {
   const date = new Date(now).toISOString().split("T")[0];
 
   db.prepare(`
-    INSERT INTO request_index (id, timestamp, token_id, provider_id, model, input_tokens, output_tokens, latency_ms, status, log_file, error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO request_index (id, timestamp, token_id, provider_id, model, input_tokens, output_tokens, latency_ms, status, log_file, error, api_key_index)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     record.id, now, record.tokenId, record.providerId, record.model,
     record.inputTokens, record.outputTokens, record.latencyMs,
-    record.status, record.logFile, record.error ?? null
+    record.status, record.logFile, record.error ?? null, record.apiKeyIndex ?? 0
   );
 
   db.prepare(`

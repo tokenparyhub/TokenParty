@@ -16,7 +16,7 @@ export interface LogEntry {
 export function writeLog(requestId: string, entry: LogEntry): string {
   const config = getConfig();
   const date = new Date(entry.timestamp).toISOString().split("T")[0];
-  const dir = path.resolve(process.cwd(), config.server.logDir, date);
+  const dir = path.join(config.server.logDir, date);
   fs.mkdirSync(dir, { recursive: true });
 
   const filename = `${requestId}.jsonl`;
@@ -28,7 +28,7 @@ export function writeLog(requestId: string, entry: LogEntry): string {
 
 export function readLog(logFile: string): LogEntry[] {
   const config = getConfig();
-  const filepath = path.resolve(process.cwd(), config.server.logDir, logFile);
+  const filepath = path.join(config.server.logDir, logFile);
   if (!fs.existsSync(filepath)) return [];
   const lines = fs.readFileSync(filepath, "utf-8").trim().split("\n");
   return lines.map((line) => JSON.parse(line));

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { parse, stringify } from "yaml";
 import { watch } from "chokidar";
 import { ConfigSchema, type Config } from "./types/config.js";
@@ -25,16 +26,21 @@ function resolveConfigEnvVars(obj: unknown): unknown {
   return obj;
 }
 
+const DEFAULT_CONFIG = `server:
+  port: 3456
+  host: 0.0.0.0
+providers: []
+tokens: []
+`;
+
 export function loadConfig(filePath?: string): Config {
-  configPath = filePath ?? path.resolve(process.cwd(), "config.yaml");
+  const defaultPath = path.join(os.homedir(), ".tokenparty", "config.yaml");
+  configPath = filePath ?? defaultPath;
 
   if (!fs.existsSync(configPath)) {
-    const examplePath = path.resolve(process.cwd(), "config.example.yaml");
-    if (fs.existsSync(examplePath)) {
-      fs.copyFileSync(examplePath, configPath);
-    } else {
-      throw new Error(`Config file not found: ${configPath}`);
-    }
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, DEFAULT_CONFIG, "utf-8");
+    console.log(`[tokenparty] Created default config at ${configPath}`);
   }
 
   rawContent = fs.readFileSync(configPath, "utf-8");
@@ -42,8 +48,12 @@ export function loadConfig(filePath?: string): Config {
   const resolved = resolveConfigEnvVars(parsed);
   currentConfig = ConfigSchema.parse(resolved);
 
-  fs.mkdirSync(path.resolve(path.dirname(configPath), currentConfig.server.logDir), { recursive: true });
-  fs.mkdirSync(path.resolve(path.dirname(configPath), currentConfig.server.dataDir), { recursive: true });
+  const configDir = path.dirname(configPath);
+  currentConfig.server.logDir = path.resolve(configDir, currentConfig.server.logDir);
+  currentConfig.server.dataDir = path.resolve(configDir, currentConfig.server.dataDir);
+
+  fs.mkdirSync(currentConfig.server.logDir, { recursive: true });
+  fs.mkdirSync(currentConfig.server.dataDir, { recursive: true });
 
   return currentConfig;
 }

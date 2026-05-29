@@ -1,8 +1,8 @@
 import type { Context, Next } from "hono";
 import { getConfig } from "../config.js";
-import type { Token } from "../types/config.js";
+import type { AppEnv } from "../types/env.js";
 
-export async function authMiddleware(c: Context, next: Next) {
+export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   const config = getConfig();
   const authHeader = c.req.header("Authorization") ?? "";
   const key = authHeader.replace(/^Bearer\s+/i, "");

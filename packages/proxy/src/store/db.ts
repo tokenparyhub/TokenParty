@@ -6,7 +6,7 @@ let db: Database.Database;
 
 export function initDb(): Database.Database {
   const config = getConfig();
-  const dbPath = path.resolve(process.cwd(), config.server.dataDir, "tokenparty.db");
+  const dbPath = path.join(config.server.dataDir, "tokenparty.db");
   db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
@@ -42,11 +42,18 @@ function runMigrations(db: Database.Database) {
       latency_ms INTEGER,
       status INTEGER,
       log_file TEXT NOT NULL,
-      error TEXT
+      error TEXT,
+      api_key_index INTEGER DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_request_timestamp ON request_index(timestamp);
     CREATE INDEX IF NOT EXISTS idx_request_token ON request_index(token_id);
     CREATE INDEX IF NOT EXISTS idx_request_provider ON request_index(provider_id);
   `);
+
+  const columns = db.prepare(`PRAGMA table_info(request_index)`).all() as { name: string }[];
+  const colNames = new Set(columns.map((c) => c.name));
+  if (!colNames.has("api_key_index")) {
+    db.exec(`ALTER TABLE request_index ADD COLUMN api_key_index INTEGER DEFAULT 0`);
+  }
 }

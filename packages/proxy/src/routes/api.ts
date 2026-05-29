@@ -31,7 +31,7 @@ apiRoutes.get("/providers", (c) => {
   const config = getConfig();
   const providers = config.providers.map((p) => ({
     ...p,
-    apiKey: maskKey(p.apiKey),
+    apiKey: Array.isArray(p.apiKey) ? p.apiKey.map(maskKey) : maskKey(p.apiKey),
   }));
   return c.json(providers);
 });
@@ -48,8 +48,12 @@ apiRoutes.post("/providers", async (c) => {
 apiRoutes.put("/providers/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
-  if (body.apiKey && body.apiKey.includes("****")) {
-    delete body.apiKey;
+  if (body.apiKey) {
+    if (Array.isArray(body.apiKey)) {
+      if (body.apiKey.every((k: string) => k.includes("****"))) delete body.apiKey;
+    } else if (body.apiKey.includes("****")) {
+      delete body.apiKey;
+    }
   }
   updateConfig((raw) => {
     const providers = raw.providers as any[];
