@@ -177,6 +177,7 @@ providers:
     name: "Anthropic"
     apiKey: ${ANTHROPIC_API_KEY}    # env var interpolation
     baseUrl: https://api.anthropic.com
+    group: production               # custom group for key access control
     models:
       - claude-sonnet-4-20250514
       - claude-opus-4-20250514
@@ -187,6 +188,7 @@ providers:
     name: "OpenAI"
     apiKey: ${OPENAI_API_KEY}
     baseUrl: https://api.openai.com/v1
+    group: production
     models:
       - gpt-4o
       - gpt-4o-mini
@@ -196,13 +198,13 @@ providers:
 tokens:
   - key: tp-team-alice
     name: "Alice"
-    allowedProviders: [anthropic-main, openai-main]
+    allowedProviders: ["group:production"]  # access all providers in "production" group
     rateLimit: 100
     enabled: true
 
   - key: tp-team-bob
     name: "Bob"
-    allowedProviders: [openai-main]
+    allowedProviders: [openai-main]         # or specify individual provider IDs
     rateLimit: 50
     enabled: true
 ```
@@ -261,7 +263,8 @@ The proxy uses `tsx watch` for instant reload on code changes. The dashboard use
 
 - [x] npm package (`npm install -g @zhouzhengchang/token-party`)
 - [x] Load balancing across multiple keys per provider
-- [x] Token allowedProviders grouping (`*` / `group:<type>`)
+- [x] Token allowedProviders grouping (`*` / `group:<name>` / manual)
+- [x] Custom provider groups (assign providers to named groups, keys reference groups)
 - [x] Cost estimation with per-model pricing config
 - [x] Docker image & docker-compose
 - [x] Provider fallback / retry

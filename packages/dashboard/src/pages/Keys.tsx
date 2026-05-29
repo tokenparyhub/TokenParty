@@ -182,11 +182,12 @@ function ProviderSelector({ providers, value, onChange }: {
   onChange: (v: string[]) => void;
 }) {
   const mode = detectMode(value);
-  const types = [...new Set(providers.map((p: any) => p.type as string))];
+  const groups = [...new Set(providers.map((p: any) => p.group as string).filter(Boolean))];
+  const hasGroups = groups.length > 0;
 
   const setMode = (m: ProviderMode) => {
     if (m === "all") onChange(["*"]);
-    else if (m === "group") onChange(types.map((t) => `group:${t}`));
+    else if (m === "group") onChange(groups.map((g) => `group:${g}`));
     else onChange([]);
   };
 
@@ -199,9 +200,10 @@ function ProviderSelector({ providers, value, onChange }: {
             key={m}
             type="button"
             onClick={() => setMode(m)}
-            className={`px-3 py-1 rounded text-xs border ${mode === m ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+            disabled={m === "group" && !hasGroups}
+            className={`px-3 py-1 rounded text-xs border ${mode === m ? "bg-indigo-600 text-white border-indigo-600" : m === "group" && !hasGroups ? "bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
           >
-            {m === "all" ? "All" : m === "group" ? "By Type" : "Manual"}
+            {m === "all" ? "All" : m === "group" ? "By Group" : "Manual"}
           </button>
         ))}
       </div>
@@ -210,17 +212,17 @@ function ProviderSelector({ providers, value, onChange }: {
       )}
       {mode === "group" && (
         <div className="space-y-1">
-          {types.map((t) => (
-            <label key={t} className="flex items-center gap-2 text-sm">
+          {groups.map((g) => (
+            <label key={g} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={value.includes(`group:${t}`)}
+                checked={value.includes(`group:${g}`)}
                 onChange={(e) => {
-                  const rule = `group:${t}`;
+                  const rule = `group:${g}`;
                   onChange(e.target.checked ? [...value, rule] : value.filter((v) => v !== rule));
                 }}
               />
-              {t}
+              {g}
             </label>
           ))}
         </div>

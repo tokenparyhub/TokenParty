@@ -11,6 +11,7 @@ interface Provider {
   baseUrl: string;
   models: ModelConfig[];
   enabled: boolean;
+  group?: string;
   _apiKeysText?: string;
 }
 
@@ -91,7 +92,7 @@ export default function Providers() {
           <div key={p.id} className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
             <div>
               <div className="font-medium">{p.name}</div>
-              <div className="text-sm text-gray-500">{p.type} &middot; {p.baseUrl}</div>
+              <div className="text-sm text-gray-500">{p.type} &middot; {p.baseUrl}{p.group ? ` · group: ${p.group}` : ""}</div>
               <div className="text-xs text-gray-400 font-mono mt-1">API Key: {Array.isArray(p.apiKey) ? `${p.apiKey.length} keys` : p.apiKey}</div>
               <div className="text-xs text-gray-500 mt-1">Models: {p.models?.map((m) => getModelId(m)).join(", ") || "none"}</div>
             </div>
@@ -124,6 +125,7 @@ export default function Providers() {
                 </select>
               </div>
               <Field label="Base URL" value={editing.baseUrl ?? ""} onChange={(v) => setEditing({ ...editing, baseUrl: v })} />
+              <Field label="Group (optional, for key access control)" value={editing.group ?? ""} onChange={(v) => setEditing({ ...editing, group: v || undefined })} />
               <div>
                 <label className="block text-sm text-gray-600 mb-1">API Keys (one per line, multiple keys enable load balancing)</label>
                 <textarea

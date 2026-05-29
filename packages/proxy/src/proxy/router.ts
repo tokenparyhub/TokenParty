@@ -9,7 +9,7 @@ export interface RouteResult {
 function isProviderAllowed(provider: Provider, allowedProviders: string[]): boolean {
   for (const rule of allowedProviders) {
     if (rule === "*") return true;
-    if (rule.startsWith("group:") && provider.type === rule.slice(6)) return true;
+    if (rule.startsWith("group:") && provider.group === rule.slice(6)) return true;
     if (rule === provider.id) return true;
   }
   return false;

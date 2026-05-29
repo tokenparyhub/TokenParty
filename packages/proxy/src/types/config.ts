@@ -18,6 +18,7 @@ export const ProviderSchema = z.object({
   models: z.array(ModelSchema).default([]),
   enabled: z.boolean().default(true),
   fallback: z.string().optional(),
+  group: z.string().optional(),
 });
 
 export const TokenSchema = z.object({

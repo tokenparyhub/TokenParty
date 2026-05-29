@@ -10,6 +10,7 @@ providers:
     name: "Anthropic Production"
     apiKey: ${ANTHROPIC_API_KEY}
     baseUrl: https://api.anthropic.com
+    group: production
     models:
       - claude-sonnet-4-20250514
       - claude-opus-4-20250514
@@ -20,6 +21,7 @@ providers:
     name: "OpenAI Production"
     apiKey: ${OPENAI_API_KEY}
     baseUrl: https://api.openai.com/v1
+    group: production
     models:
       - gpt-4o
       - gpt-4o-mini
@@ -29,6 +31,6 @@ providers:
 tokens:
   - key: tp-example-token
     name: "Example User"
-    allowedProviders: [anthropic-main, openai-main]
+    allowedProviders: ["group:production"]
     rateLimit: 100
     enabled: true
