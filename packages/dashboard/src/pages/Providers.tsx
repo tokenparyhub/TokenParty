@@ -27,13 +27,28 @@ function normalizeModels(models: ModelConfig[]): ModelConfig[] {
   });
 }
 
+const UNGROUPED = "__ungrouped__";
+
 export default function Providers() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [editing, setEditing] = useState<Partial<Provider> | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [emptyGroups, setEmptyGroups] = useState<Set<string>>(new Set());
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
 
   const load = () => api.getProviders().then(setProviders).catch(console.error);
   useEffect(() => { load(); }, []);
+
+  const providerGroups = [...new Set(providers.map((p) => p.group).filter(Boolean))] as string[];
+  const allGroups = [...new Set([...providerGroups, ...emptyGroups])].sort();
+
+  const groupedProviders = (group: string) =>
+    group === UNGROUPED
+      ? providers.filter((p) => !p.group)
+      : providers.filter((p) => p.group === group);
 
   const save = async () => {
     if (!editing) return;
@@ -75,36 +90,135 @@ export default function Providers() {
     setEditing({ ...editing, models });
   };
 
+  const createGroup = () => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    setEmptyGroups((prev) => new Set([...prev, name]));
+    setNewGroupName("");
+    setShowNewGroupInput(false);
+  };
+
+  const deleteGroup = async (group: string) => {
+    const inGroup = providers.filter((p) => p.group === group);
+    if (inGroup.length > 0 && !confirm(`Move ${inGroup.length} provider(s) to Ungrouped and delete group "${group}"?`)) return;
+    for (const p of inGroup) {
+      await api.updateProvider(p.id, { ...p, group: undefined });
+    }
+    setEmptyGroups((prev) => {
+      const next = new Set(prev);
+      next.delete(group);
+      return next;
+    });
+    load();
+  };
+
+  const handleDrop = async (targetGroup: string) => {
+    setDragOverGroup(null);
+    if (!draggedId) return;
+    const provider = providers.find((p) => p.id === draggedId);
+    if (!provider) return;
+    const newGroup = targetGroup === UNGROUPED ? undefined : targetGroup;
+    if (provider.group === newGroup) return;
+    await api.updateProvider(provider.id, { ...provider, group: newGroup });
+    load();
+    setDraggedId(null);
+  };
+
+  const renderGroupSection = (group: string, label: string, isUngrouped: boolean) => {
+    const items = groupedProviders(group);
+    const isOver = dragOverGroup === group;
+    return (
+      <div
+        key={group}
+        className={`rounded-lg border-2 border-dashed p-4 transition-colors ${isOver ? "border-indigo-400 bg-indigo-50/50" : "border-gray-200 bg-white"}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOverGroup(group); }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDragOverGroup(null); }}
+        onDrop={(e) => { e.preventDefault(); handleDrop(group); }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{label}</h3>
+          {!isUngrouped && (
+            <button onClick={() => deleteGroup(group)} className="text-xs text-red-500 hover:text-red-700">Delete Group</button>
+          )}
+        </div>
+        {items.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded">
+            Drag providers here
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {items.map((p) => (
+              <div
+                key={p.id}
+                draggable
+                onDragStart={() => setDraggedId(p.id)}
+                onDragEnd={() => { setDraggedId(null); setDragOverGroup(null); }}
+                className={`bg-gray-50 rounded-lg p-3 flex items-center justify-between cursor-grab active:cursor-grabbing border ${draggedId === p.id ? "opacity-50 border-indigo-300" : "border-transparent hover:border-gray-300"}`}
+              >
+                <div className="min-w-0">
+                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="text-xs text-gray-500 truncate">{p.type} &middot; {p.baseUrl}</div>
+                  <div className="text-xs text-gray-400 font-mono mt-0.5">
+                    {Array.isArray(p.apiKey) ? `${p.apiKey.length} keys` : p.apiKey}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Models: {p.models?.map((m) => getModelId(m)).join(", ") || "none"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 ml-3 shrink-0">
+                  <span className={`px-2 py-0.5 rounded text-xs ${p.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    {p.enabled ? "Active" : "Disabled"}
+                  </span>
+                  <button onClick={() => { setEditing(p); setIsNew(false); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
+                  <button onClick={() => remove(p.id)} className="text-xs text-red-600 hover:underline">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Providers</h2>
-        <button
-          onClick={() => { setEditing({ type: "openai", models: [], enabled: true }); setIsNew(true); }}
-          className="px-4 py-2 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700"
-        >
-          Add Provider
-        </button>
+        <div className="flex gap-2">
+          {showNewGroupInput ? (
+            <div className="flex gap-1">
+              <input
+                autoFocus
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") createGroup(); if (e.key === "Escape") setShowNewGroupInput(false); }}
+                placeholder="Group name"
+                className="border rounded px-2 py-1.5 text-sm w-36"
+              />
+              <button onClick={createGroup} className="px-3 py-1.5 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">Add</button>
+              <button onClick={() => setShowNewGroupInput(false)} className="px-2 py-1.5 border rounded text-sm">Cancel</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowNewGroupInput(true)}
+              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+            >
+              New Group
+            </button>
+          )}
+          <button
+            onClick={() => { setEditing({ type: "openai", models: [], enabled: true }); setIsNew(true); }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700"
+          >
+            Add Provider
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4">
-        {providers.map((p) => (
-          <div key={p.id} className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
-            <div>
-              <div className="font-medium">{p.name}</div>
-              <div className="text-sm text-gray-500">{p.type} &middot; {p.baseUrl}{p.group ? ` · group: ${p.group}` : ""}</div>
-              <div className="text-xs text-gray-400 font-mono mt-1">API Key: {Array.isArray(p.apiKey) ? `${p.apiKey.length} keys` : p.apiKey}</div>
-              <div className="text-xs text-gray-500 mt-1">Models: {p.models?.map((m) => getModelId(m)).join(", ") || "none"}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-xs ${p.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                {p.enabled ? "Active" : "Disabled"}
-              </span>
-              <button onClick={() => { setEditing(p); setIsNew(false); }} className="text-sm text-indigo-600 hover:underline">Edit</button>
-              <button onClick={() => remove(p.id)} className="text-sm text-red-600 hover:underline">Delete</button>
-            </div>
-          </div>
-        ))}
+      <div className="space-y-4">
+        {allGroups.map((g) => renderGroupSection(g, g, false))}
+        {renderGroupSection(UNGROUPED, "Ungrouped", true)}
       </div>
 
       {editing && (
@@ -125,7 +239,6 @@ export default function Providers() {
                 </select>
               </div>
               <Field label="Base URL" value={editing.baseUrl ?? ""} onChange={(v) => setEditing({ ...editing, baseUrl: v })} />
-              <Field label="Group (optional, for key access control)" value={editing.group ?? ""} onChange={(v) => setEditing({ ...editing, group: v || undefined })} />
               <div>
                 <label className="block text-sm text-gray-600 mb-1">API Keys (one per line, multiple keys enable load balancing)</label>
                 <textarea
