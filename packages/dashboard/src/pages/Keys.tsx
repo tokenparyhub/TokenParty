@@ -67,7 +67,16 @@ export default function Keys() {
               <tr key={k.key} className="border-t">
                 <td className="px-4 py-2 font-medium">{k.name}</td>
                 <td className="px-4 py-2 font-mono text-xs">{k.key}</td>
-                <td className="px-4 py-2 text-xs">{k.allowedProviders.join(", ")}</td>
+                <td className="px-4 py-2 text-xs">
+                  {k.allowedProviders.includes("*")
+                    ? <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">All</span>
+                    : k.allowedProviders.map((r, i) => (
+                        <span key={i} className={`inline-block mr-1 px-1.5 py-0.5 rounded ${r.startsWith("group:") ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                          {r.startsWith("group:") ? r.slice(6) : r}
+                        </span>
+                      ))
+                  }
+                </td>
                 <td className="px-4 py-2 text-right">{k.rateLimit ?? "Unlimited"}</td>
                 <td className="px-4 py-2 text-center">
                   <span className={`px-2 py-0.5 rounded text-xs ${k.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
@@ -104,29 +113,11 @@ export default function Keys() {
                   <div className="font-mono text-sm bg-gray-50 px-3 py-2 rounded">{editing.key}</div>
                 </div>
               )}
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Allowed Providers</label>
-                <div className="space-y-1">
-                  {providers.map((p) => (
-                    <label key={p.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={editing.allowedProviders?.includes(p.id) ?? false}
-                        onChange={(e) => {
-                          const current = editing.allowedProviders ?? [];
-                          setEditing({
-                            ...editing,
-                            allowedProviders: e.target.checked
-                              ? [...current, p.id]
-                              : current.filter((x) => x !== p.id),
-                          });
-                        }}
-                      />
-                      {p.name} ({p.id})
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <ProviderSelector
+                providers={providers}
+                value={editing.allowedProviders ?? []}
+                onChange={(v) => setEditing({ ...editing, allowedProviders: v })}
+              />
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Rate Limit (req/min, empty = unlimited)</label>
                 <input
@@ -150,6 +141,83 @@ export default function Keys() {
               <button onClick={save} className="px-4 py-2 bg-indigo-600 text-white rounded text-sm">Save</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ProviderMode = "all" | "group" | "manual";
+
+function detectMode(value: string[]): ProviderMode {
+  if (value.includes("*")) return "all";
+  if (value.some((v) => v.startsWith("group:"))) return "group";
+  return "manual";
+}
+
+function ProviderSelector({ providers, value, onChange }: {
+  providers: any[];
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const mode = detectMode(value);
+  const types = [...new Set(providers.map((p: any) => p.type as string))];
+
+  const setMode = (m: ProviderMode) => {
+    if (m === "all") onChange(["*"]);
+    else if (m === "group") onChange(types.map((t) => `group:${t}`));
+    else onChange([]);
+  };
+
+  return (
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">Allowed Providers</label>
+      <div className="flex gap-2 mb-2">
+        {(["all", "group", "manual"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`px-3 py-1 rounded text-xs border ${mode === m ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {m === "all" ? "All" : m === "group" ? "By Type" : "Manual"}
+          </button>
+        ))}
+      </div>
+      {mode === "all" && (
+        <div className="text-xs text-gray-500">All providers (including future ones)</div>
+      )}
+      {mode === "group" && (
+        <div className="space-y-1">
+          {types.map((t) => (
+            <label key={t} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={value.includes(`group:${t}`)}
+                onChange={(e) => {
+                  const rule = `group:${t}`;
+                  onChange(e.target.checked ? [...value, rule] : value.filter((v) => v !== rule));
+                }}
+              />
+              {t}
+            </label>
+          ))}
+        </div>
+      )}
+      {mode === "manual" && (
+        <div className="space-y-1">
+          {providers.map((p: any) => (
+            <label key={p.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={value.includes(p.id)}
+                onChange={(e) => {
+                  onChange(e.target.checked ? [...value, p.id] : value.filter((v) => v !== p.id));
+                }}
+              />
+              {p.name} ({p.id})
+            </label>
+          ))}
         </div>
       )}
     </div>

@@ -5,6 +5,15 @@ export interface RouteResult {
   provider: Provider;
 }
 
+function isProviderAllowed(provider: Provider, allowedProviders: string[]): boolean {
+  for (const rule of allowedProviders) {
+    if (rule === "*") return true;
+    if (rule.startsWith("group:") && provider.type === rule.slice(6)) return true;
+    if (rule === provider.id) return true;
+  }
+  return false;
+}
+
 export function resolveProvider(model: string, token: Token): RouteResult | { error: string } {
   const config = getConfig();
 
@@ -16,10 +25,8 @@ export function resolveProvider(model: string, token: Token): RouteResult | { er
     return { error: `No provider available for model: ${model}` };
   }
 
-  for (const allowedId of token.allowedProviders) {
-    const match = candidateProviders.find((p) => p.id === allowedId);
-    if (match) return { provider: match };
-  }
+  const match = candidateProviders.find((p) => isProviderAllowed(p, token.allowedProviders));
+  if (match) return { provider: match };
 
   return { error: `Token not authorized for any provider serving model: ${model}` };
 }
@@ -30,7 +37,7 @@ export function listAvailableModels(token: Token): string[] {
 
   for (const provider of config.providers) {
     if (!provider.enabled) continue;
-    if (!token.allowedProviders.includes(provider.id)) continue;
+    if (!isProviderAllowed(provider, token.allowedProviders)) continue;
     for (const model of provider.models) {
       models.add(model);
     }

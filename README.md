@@ -251,7 +251,7 @@ The proxy uses `tsx watch` for instant reload on code changes. The dashboard use
 
 - [x] npm package (`npm install -g @zhouzhengchang/token-party`)
 - [x] Load balancing across multiple keys per provider
-- [ ] Token allowedProviders grouping (`*` / `group:<type>`)
+- [x] Token allowedProviders grouping (`*` / `group:<type>`)
 - [ ] Cost estimation with per-model pricing config
 - [ ] Docker image & docker-compose
 - [ ] Provider fallback / retry
