@@ -38,6 +38,7 @@ export default function Requests() {
                 <th className="px-3 py-2 text-left">User</th>
                 <th className="px-3 py-2 text-left">Model</th>
                 <th className="px-3 py-2 text-right">Tokens</th>
+                <th className="px-3 py-2 text-right">Cost</th>
                 <th className="px-3 py-2 text-right">Latency</th>
                 <th className="px-3 py-2 text-center">Status</th>
               </tr>
@@ -53,6 +54,7 @@ export default function Requests() {
                   <td className="px-3 py-2 font-mono text-xs">{req.token_id?.slice(0, 12)}</td>
                   <td className="px-3 py-2">{req.model}</td>
                   <td className="px-3 py-2 text-right">{(req.input_tokens ?? 0) + (req.output_tokens ?? 0)}</td>
+                  <td className="px-3 py-2 text-right text-xs">{req.cost > 0 ? req.cost.toFixed(4) : "-"}</td>
                   <td className="px-3 py-2 text-right">{req.latency_ms}ms</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded text-xs ${req.status === 200 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
@@ -91,10 +93,10 @@ export default function Requests() {
               <div><span className="text-gray-500">Latency:</span> {selected.latency_ms}ms</div>
               <div><span className="text-gray-500">Status:</span> <span className={selected.status === 200 ? "text-green-600" : "text-red-600"}>{selected.status}</span></div>
               <div><span className="text-gray-500">Entry:</span> {reqLog?.headers?.["x-entry-protocol"] ?? "-"}</div>
-              <div><span className="text-gray-500">Target:</span> {reqLog?.headers?.["x-provider-type"] ?? "-"}</div>
+              <div><span className="text-gray-500">Cost:</span> {selected.cost > 0 ? selected.cost.toFixed(4) : "-"}</div>
             </div>
             {(selected.input_tokens > 0 || selected.output_tokens > 0) && (
-              <TokenUsageBar input={selected.input_tokens} output={selected.output_tokens} />
+              <TokenUsageBar input={selected.input_tokens} output={selected.output_tokens} cacheRead={selected.cache_read_tokens ?? 0} cacheWrite={selected.cache_write_tokens ?? 0} />
             )}
             {resLog?.streaming && (
               <div className="mt-2">
@@ -208,21 +210,26 @@ export default function Requests() {
 
 // --- Token Usage Bar ---
 
-function TokenUsageBar({ input, output }: { input: number; output: number }) {
+function TokenUsageBar({ input, output, cacheRead = 0, cacheWrite = 0 }: { input: number; output: number; cacheRead?: number; cacheWrite?: number }) {
   const total = input + output;
   if (total === 0) return null;
-  const inputPct = (input / total) * 100;
+  const nonCachedInput = Math.max(0, input - cacheRead);
+  const cacheReadPct = (cacheRead / total) * 100;
+  const inputPct = (nonCachedInput / total) * 100;
   const outputPct = (output / total) * 100;
 
   return (
     <div>
-      <div className="flex justify-between text-xs text-gray-500 mb-1">
+      <div className="flex flex-wrap gap-x-3 text-xs text-gray-500 mb-1">
         <span>Input: {input.toLocaleString()}</span>
+        {cacheRead > 0 && <span className="text-cyan-600">Cache Read: {cacheRead.toLocaleString()}</span>}
+        {cacheWrite > 0 && <span className="text-amber-600">Cache Write: {cacheWrite.toLocaleString()}</span>}
         <span>Output: {output.toLocaleString()}</span>
-        <span>Total: {total.toLocaleString()}</span>
+        <span className="ml-auto">Total: {total.toLocaleString()}</span>
       </div>
       <div className="flex h-2 rounded overflow-hidden bg-gray-200">
-        <div className="bg-blue-500" style={{ width: `${inputPct}%` }} title={`Input: ${input}`} />
+        {cacheRead > 0 && <div className="bg-cyan-400" style={{ width: `${cacheReadPct}%` }} title={`Cache Read: ${cacheRead}`} />}
+        <div className="bg-blue-500" style={{ width: `${inputPct}%` }} title={`Input (non-cached): ${nonCachedInput}`} />
         <div className="bg-green-500" style={{ width: `${outputPct}%` }} title={`Output: ${output}`} />
       </div>
     </div>
