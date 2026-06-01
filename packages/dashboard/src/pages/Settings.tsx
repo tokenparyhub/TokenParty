@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 
 interface SettingsData {
   displayCurrency: "USD" | "CNY";
@@ -35,6 +36,11 @@ export function formatCost(usdCost: number): string {
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsData>(loadSettings);
   const [saved, setSaved] = useState(false);
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    api.getVersion().then((v) => setVersion(v)).catch(console.error);
+  }, []);
 
   const update = (patch: Partial<SettingsData>) => {
     const next = { ...settings, ...patch };
@@ -78,6 +84,12 @@ export default function Settings() {
           <div className="text-sm text-green-600">Settings saved</div>
         )}
       </div>
+
+      {version && (
+        <div className="mt-6 text-sm text-gray-400">
+          TokenParty v{version}
+        </div>
+      )}
     </div>
   );
 }

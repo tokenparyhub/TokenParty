@@ -78,8 +78,8 @@ Create these two files anywhere on your server:
 ```yaml
 services:
   tokenparty:
-    image: nfqlt/node22
-    entrypoint: sh -c "npm install -g @zhouzhengchang/token-party && tokenparty"
+    image: node:22-slim
+    entrypoint: sh -c "apt-get update && apt-get install -y python3 make g++ && npm install -g @zhouzhengchang/token-party && tokenparty"
     ports:
       - "3456:3456"
     volumes:

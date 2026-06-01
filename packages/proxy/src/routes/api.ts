@@ -4,6 +4,12 @@ import { getDb, validateAdminToken } from "../store/db.js";
 import { readLog } from "../store/log-writer.js";
 import { nanoid } from "nanoid";
 import { getModelId } from "../types/config.js";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf-8"));
 
 export const apiRoutes = new Hono();
 
@@ -23,6 +29,10 @@ apiRoutes.use("/*", async (c, next) => {
   }
   return next();
 });
+
+// --- Version ---
+
+apiRoutes.get("/version", (c) => c.json({ version: pkg.version }));
 
 // --- Models ---
 

@@ -57,6 +57,8 @@ export const api = {
 
   getRequestDetail: (id: string) => request<any>(`/requests/${id}`),
 
+  getVersion: () => request<{ version: string }>("/version").then((r) => r.version),
+
   verifyToken: (token: string) =>
     fetch(`${BASE}/auth/verify`, {
       method: "POST",
