@@ -5,3 +5,9 @@ export type AppEnv = {
     authToken: Token;
   };
 };
+
+export type UserApiEnv = {
+  Variables: {
+    userToken: Token;
+  };
+};

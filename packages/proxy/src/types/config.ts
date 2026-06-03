@@ -33,6 +33,7 @@ export const TokenSchema = z.object({
     daily: z.number().optional(),
     monthly: z.number().optional(),
   }).optional(),
+  monthlyBudget: z.number().optional(),
   enabled: z.boolean().default(true),
 });
 

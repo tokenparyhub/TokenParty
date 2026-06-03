@@ -6,6 +6,7 @@ import fs from "node:fs";
 import { openaiRoutes } from "./routes/openai.js";
 import { anthropicRoutes } from "./routes/anthropic.js";
 import { apiRoutes } from "./routes/api.js";
+import { userApiRoutes } from "./routes/user-api.js";
 
 function findDashboardRoot(): string | null {
   const candidates = [
@@ -27,6 +28,7 @@ export function createServer() {
 
   app.route("/v1", openaiRoutes);
   app.route("/anthropic", anthropicRoutes);
+  app.route("/api/user", userApiRoutes);
   app.route("/api", apiRoutes);
 
   const dashboardRoot = findDashboardRoot();

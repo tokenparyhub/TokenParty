@@ -17,7 +17,15 @@ export const apiRoutes = new Hono();
 
 apiRoutes.post("/auth/verify", async (c) => {
   const { token } = await c.req.json<{ token: string }>();
-  return c.json({ valid: validateAdminToken(token) });
+  if (validateAdminToken(token)) {
+    return c.json({ valid: true, role: "admin" });
+  }
+  const config = getConfig();
+  const userToken = config.tokens.find((t) => t.key === token && t.enabled);
+  if (userToken) {
+    return c.json({ valid: true, role: "user", name: userToken.name });
+  }
+  return c.json({ valid: false });
 });
 
 apiRoutes.use("/*", async (c, next) => {
@@ -121,15 +129,32 @@ apiRoutes.get("/keys", (c) => {
   return c.json(config.tokens);
 });
 
+apiRoutes.get("/keys/usage-summary", (c) => {
+  const db = getDb();
+  const monthStart = new Date().toISOString().split("T")[0].slice(0, 7) + "-01";
+  const rows = db.prepare(`
+    SELECT token_id,
+      COALESCE(SUM(cost), 0) as monthly_cost,
+      COALESCE(SUM(request_count), 0) as monthly_requests,
+      COALESCE(SUM(input_tokens), 0) as monthly_input_tokens,
+      COALESCE(SUM(output_tokens), 0) as monthly_output_tokens
+    FROM usage_daily WHERE date >= ?
+    GROUP BY token_id
+  `).all(monthStart);
+  return c.json(rows);
+});
+
 apiRoutes.post("/keys", async (c) => {
   const body = await c.req.json();
-  const newToken = {
+  const newToken: Record<string, any> = {
     key: body.key ?? `tp-${nanoid(16)}`,
     name: body.name,
     allowedProviders: body.allowedProviders ?? [],
     rateLimit: body.rateLimit ?? null,
     enabled: body.enabled ?? true,
   };
+  if (body.quota) newToken.quota = body.quota;
+  if (body.monthlyBudget !== undefined) newToken.monthlyBudget = body.monthlyBudget;
   updateConfig((raw) => {
     (raw.tokens as any[]).push(newToken);
   });
