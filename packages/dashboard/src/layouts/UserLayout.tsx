@@ -43,10 +43,10 @@ export default function UserLayout() {
             </NavLink>
           )}
           <button
-            onClick={() => { clearAuth(); window.location.href = "/login"; }}
+            onClick={() => { clearAuth(); window.location.href = "/login?switch"; }}
             className="w-full px-3 py-2 rounded text-sm text-gray-400 hover:bg-gray-800 hover:text-white text-left"
           >
-            Logout
+            Switch Account
           </button>
         </div>
       </nav>

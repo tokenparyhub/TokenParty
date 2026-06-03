@@ -2,6 +2,13 @@ const BASE = "/api";
 const TOKEN_KEY = "tokenparty_token";
 const ROLE_KEY = "tokenparty_role";
 const NAME_KEY = "tokenparty_user_name";
+const ACCOUNTS_KEY = "tokenparty_accounts";
+
+export interface SavedAccount {
+  token: string;
+  role: "admin" | "user";
+  name: string;
+}
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY) ?? localStorage.getItem("tokenparty_admin_token");
@@ -15,11 +22,31 @@ export function getUserName(): string | null {
   return localStorage.getItem(NAME_KEY);
 }
 
+export function getSavedAccounts(): SavedAccount[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function saveAccount(token: string, role: "admin" | "user", name: string) {
+  const accounts = getSavedAccounts().filter((a) => a.token !== token);
+  accounts.unshift({ token, role, name });
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+export function removeAccount(token: string) {
+  const accounts = getSavedAccounts().filter((a) => a.token !== token);
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
 export function setAuth(token: string, role: "admin" | "user", name?: string) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(ROLE_KEY, role);
   if (name) localStorage.setItem(NAME_KEY, name);
   localStorage.removeItem("tokenparty_admin_token");
+  saveAccount(token, role, name || (role === "admin" ? "Admin" : "User"));
 }
 
 export function clearAuth() {
