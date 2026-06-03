@@ -39,6 +39,8 @@ export default function Providers() {
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState("");
 
   const load = () => api.getProviders().then(setProviders).catch(console.error);
   useEffect(() => { load(); }, []);
@@ -99,6 +101,23 @@ export default function Providers() {
     setShowNewGroupInput(false);
   };
 
+  const renameGroup = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) { setEditingGroup(null); return; }
+    const inGroup = providers.filter((p) => p.group === oldName);
+    for (const p of inGroup) {
+      await api.updateProvider(p.id, { ...p, group: trimmed });
+    }
+    setEmptyGroups((prev) => {
+      const next = new Set(prev);
+      next.delete(oldName);
+      next.add(trimmed);
+      return next;
+    });
+    setEditingGroup(null);
+    load();
+  };
+
   const deleteGroup = async (group: string) => {
     const inGroup = providers.filter((p) => p.group === group);
     if (inGroup.length > 0 && !confirm(`Move ${inGroup.length} provider(s) to Ungrouped and delete group "${group}"?`)) return;
@@ -137,8 +156,25 @@ export default function Providers() {
         onDrop={(e) => { e.preventDefault(); handleDrop(group); }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{label}</h3>
-          {!isUngrouped && (
+          {!isUngrouped && editingGroup === group ? (
+            <input
+              autoFocus
+              type="text"
+              value={editingGroupName}
+              onChange={(e) => setEditingGroupName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") renameGroup(group, editingGroupName); if (e.key === "Escape") setEditingGroup(null); }}
+              onBlur={() => renameGroup(group, editingGroupName)}
+              className="text-sm font-semibold text-gray-700 uppercase tracking-wide border-b border-indigo-400 outline-none bg-transparent px-0 py-0"
+            />
+          ) : (
+            <h3
+              className={`text-sm font-semibold text-gray-700 uppercase tracking-wide ${!isUngrouped ? "cursor-pointer hover:text-indigo-600" : ""}`}
+              onClick={() => { if (!isUngrouped) { setEditingGroup(group); setEditingGroupName(group); } }}
+            >
+              {label}
+            </h3>
+          )}
+          {!isUngrouped && editingGroup !== group && (
             <button onClick={() => deleteGroup(group)} className="text-xs text-red-500 hover:text-red-700">Delete Group</button>
           )}
         </div>
