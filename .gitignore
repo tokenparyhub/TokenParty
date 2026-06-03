@@ -11,3 +11,4 @@ packages/proxy/data/
 # Environment
 .env
 .env.*
+.claude

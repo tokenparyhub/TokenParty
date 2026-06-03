@@ -1,26 +1,46 @@
 const BASE = "/api";
-const TOKEN_KEY = "tokenparty_admin_token";
+const TOKEN_KEY = "tokenparty_token";
+const ROLE_KEY = "tokenparty_role";
+const NAME_KEY = "tokenparty_user_name";
 
-export function getAdminToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY) ?? localStorage.getItem("tokenparty_admin_token");
 }
 
-export function setAdminToken(token: string) {
+export function getRole(): "admin" | "user" | null {
+  return localStorage.getItem(ROLE_KEY) as "admin" | "user" | null;
+}
+
+export function getUserName(): string | null {
+  return localStorage.getItem(NAME_KEY);
+}
+
+export function setAuth(token: string, role: "admin" | "user", name?: string) {
   localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(ROLE_KEY, role);
+  if (name) localStorage.setItem(NAME_KEY, name);
+  localStorage.removeItem("tokenparty_admin_token");
 }
 
-export function clearAdminToken() {
+export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(ROLE_KEY);
+  localStorage.removeItem(NAME_KEY);
+  localStorage.removeItem("tokenparty_admin_token");
 }
+
+export const getAdminToken = getToken;
+export const setAdminToken = (t: string) => setAuth(t, "admin");
+export const clearAdminToken = clearAuth;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getAdminToken();
+  const token = getToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, { headers, ...options });
   if (res.status === 401) {
-    clearAdminToken();
+    clearAuth();
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -29,12 +49,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // --- Admin APIs ---
   getProviders: () => request<any[]>("/providers"),
   createProvider: (data: any) => request("/providers", { method: "POST", body: JSON.stringify(data) }),
   updateProvider: (id: string, data: any) => request(`/providers/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteProvider: (id: string) => request(`/providers/${id}`, { method: "DELETE" }),
 
   getKeys: () => request<any[]>("/keys"),
+  getKeysUsageSummary: () => request<any[]>("/keys/usage-summary"),
   createKey: (data: any) => request("/keys", { method: "POST", body: JSON.stringify(data) }),
   updateKey: (key: string, data: any) => request(`/keys/${key}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteKey: (key: string) => request(`/keys/${key}`, { method: "DELETE" }),
@@ -79,10 +101,31 @@ export const api = {
       "/settings/log-storage", { method: "DELETE" }
     ),
 
+  // --- User APIs ---
+  getUserProfile: () => request<any>("/user/profile"),
+  getUserStats: (days?: number) => {
+    const params = new URLSearchParams();
+    if (days) params.set("days", String(days));
+    return request<any[]>(`/user/stats?${params}`);
+  },
+  getUserRequests: (params?: { limit?: number; offset?: number; provider_id?: string; model?: string; status?: string; tags?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.offset) search.set("offset", String(params.offset));
+    if (params?.provider_id) search.set("provider_id", params.provider_id);
+    if (params?.model) search.set("model", params.model);
+    if (params?.status) search.set("status", params.status);
+    if (params?.tags) search.set("tags", params.tags);
+    return request<{ data: any[]; total: number }>(`/user/requests?${search}`);
+  },
+  getUserRequestDetail: (id: string) => request<any>(`/user/requests/${id}`),
+  getUserModels: () => request<{ id: string }[]>("/user/models"),
+
+  // --- Auth ---
   verifyToken: (token: string) =>
     fetch(`${BASE}/auth/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
-    }).then((r) => r.json() as Promise<{ valid: boolean }>),
+    }).then((r) => r.json() as Promise<{ valid: boolean; role?: string; name?: string }>),
 };

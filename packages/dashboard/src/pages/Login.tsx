@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, setAdminToken } from "../lib/api";
+import { api, setAuth } from "../lib/api";
 
 export default function Login() {
   const [token, setToken] = useState("");
@@ -13,10 +13,10 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const { valid } = await api.verifyToken(token.trim());
-      if (valid) {
-        setAdminToken(token.trim());
-        navigate("/");
+      const result = await api.verifyToken(token.trim());
+      if (result.valid && result.role) {
+        setAuth(token.trim(), result.role as "admin" | "user", result.name);
+        navigate(result.role === "admin" ? "/admin" : "/");
       } else {
         setError("Invalid token");
       }
@@ -31,13 +31,13 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-sm">
         <h1 className="text-2xl font-bold text-center mb-2">TokenParty</h1>
-        <p className="text-sm text-gray-500 text-center mb-6">Enter admin token to continue</p>
+        <p className="text-sm text-gray-500 text-center mb-6">Enter your admin token or API key</p>
         <form onSubmit={handleSubmit}>
           <input
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="admin-xxxxxxxxxxxx"
+            placeholder="admin-xxx / tp-xxx"
             className="w-full border rounded px-3 py-2 text-sm mb-4"
             autoFocus
           />
@@ -51,7 +51,7 @@ export default function Login() {
           </button>
         </form>
         <p className="text-xs text-gray-400 text-center mt-4">
-          Run <code className="bg-gray-100 px-1 rounded">tokenparty --token</code> to view your token
+          Run <code className="bg-gray-100 px-1 rounded">tokenparty --token</code> to view your admin token
         </p>
       </div>
     </div>
