@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getConfig } from "../config.js";
+import { getDb, getSetting } from "./db.js";
 
 export interface LogEntry {
   type: "request" | "response";
@@ -40,4 +41,66 @@ export function headersToRecord(headers: Headers): Record<string, string> {
     result[key] = value;
   });
   return result;
+}
+
+const DEFAULT_MAX_LOG_SIZE_MB = 500;
+
+export function getLogStats(): { totalSizeMB: number; maxSizeMB: number; dayCount: number } {
+  const config = getConfig();
+  const logDir = config.server.logDir;
+  const maxSizeMB = Number(getSetting("max_log_size_mb")) || DEFAULT_MAX_LOG_SIZE_MB;
+
+  let totalSize = 0;
+  let dayCount = 0;
+  if (fs.existsSync(logDir)) {
+    for (const entry of fs.readdirSync(logDir)) {
+      const dayPath = path.join(logDir, entry);
+      if (!fs.statSync(dayPath).isDirectory()) continue;
+      dayCount++;
+      for (const file of fs.readdirSync(dayPath)) {
+        totalSize += fs.statSync(path.join(dayPath, file)).size;
+      }
+    }
+  }
+
+  return { totalSizeMB: Math.round(totalSize / 1024 / 1024 * 100) / 100, maxSizeMB, dayCount };
+}
+
+export function cleanupLogs(): { deletedDays: string[]; freedMB: number } {
+  const config = getConfig();
+  const logDir = config.server.logDir;
+  const maxSizeBytes = (Number(getSetting("max_log_size_mb")) || DEFAULT_MAX_LOG_SIZE_MB) * 1024 * 1024;
+
+  if (!fs.existsSync(logDir)) return { deletedDays: [], freedMB: 0 };
+
+  const days: { name: string; size: number }[] = [];
+  for (const entry of fs.readdirSync(logDir).sort()) {
+    const dayPath = path.join(logDir, entry);
+    if (!fs.statSync(dayPath).isDirectory()) continue;
+    let size = 0;
+    for (const file of fs.readdirSync(dayPath)) {
+      size += fs.statSync(path.join(dayPath, file)).size;
+    }
+    days.push({ name: entry, size });
+  }
+
+  let totalSize = days.reduce((s, d) => s + d.size, 0);
+  const deletedDays: string[] = [];
+  let freedBytes = 0;
+
+  while (totalSize > maxSizeBytes && days.length > 1) {
+    const oldest = days.shift()!;
+    const dayPath = path.join(logDir, oldest.name);
+
+    const db = getDb();
+    db.prepare(`DELETE FROM request_index WHERE log_file LIKE ?`).run(`${oldest.name}/%`);
+    db.prepare(`DELETE FROM usage_daily WHERE date = ?`).run(oldest.name);
+
+    fs.rmSync(dayPath, { recursive: true, force: true });
+    totalSize -= oldest.size;
+    freedBytes += oldest.size;
+    deletedDays.push(oldest.name);
+  }
+
+  return { deletedDays, freedMB: Math.round(freedBytes / 1024 / 1024 * 100) / 100 };
 }

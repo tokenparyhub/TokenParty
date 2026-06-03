@@ -59,6 +59,16 @@ export const api = {
 
   getVersion: () => request<{ version: string }>("/version").then((r) => r.version),
 
+  getLogStorage: () => request<{ totalSizeMB: number; maxSizeMB: number; dayCount: number }>("/settings/log-storage"),
+  updateLogStorage: (maxSizeMB: number) =>
+    request<{ totalSizeMB: number; maxSizeMB: number; dayCount: number; cleaned: { deletedDays: string[]; freedMB: number } }>(
+      "/settings/log-storage", { method: "PUT", body: JSON.stringify({ maxSizeMB }) }
+    ),
+  triggerLogCleanup: () =>
+    request<{ totalSizeMB: number; maxSizeMB: number; dayCount: number; cleaned: { deletedDays: string[]; freedMB: number } }>(
+      "/settings/log-cleanup", { method: "POST" }
+    ),
+
   verifyToken: (token: string) =>
     fetch(`${BASE}/auth/verify`, {
       method: "POST",

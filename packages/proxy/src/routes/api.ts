@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getConfig, updateConfig } from "../config.js";
-import { getDb, validateAdminToken } from "../store/db.js";
-import { readLog } from "../store/log-writer.js";
+import { getDb, validateAdminToken, getSetting, setSetting } from "../store/db.js";
+import { readLog, getLogStats, cleanupLogs } from "../store/log-writer.js";
 import { nanoid } from "nanoid";
 import { getModelId } from "../types/config.js";
 import { readFileSync } from "node:fs";
@@ -193,6 +193,28 @@ apiRoutes.get("/requests/:id", (c) => {
 
   const logs = readLog(row.log_file);
   return c.json({ ...row, logs });
+});
+
+// --- Settings ---
+
+apiRoutes.get("/settings/log-storage", (c) => {
+  const stats = getLogStats();
+  return c.json(stats);
+});
+
+apiRoutes.put("/settings/log-storage", async (c) => {
+  const { maxSizeMB } = await c.req.json<{ maxSizeMB: number }>();
+  if (!maxSizeMB || maxSizeMB < 50) return c.json({ error: "Minimum 50MB" }, 400);
+  setSetting("max_log_size_mb", String(maxSizeMB));
+  const result = cleanupLogs();
+  const stats = getLogStats();
+  return c.json({ ...stats, cleaned: result });
+});
+
+apiRoutes.post("/settings/log-cleanup", (c) => {
+  const result = cleanupLogs();
+  const stats = getLogStats();
+  return c.json({ ...stats, cleaned: result });
 });
 
 function maskKey(key: string): string {

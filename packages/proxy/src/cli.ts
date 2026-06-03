@@ -5,6 +5,7 @@ import os from "node:os";
 import fs from "node:fs";
 import { loadConfig, watchConfig } from "./config.js";
 import { initDb, getValidAdminToken, getAdminTokenInfo, createAdminToken } from "./store/db.js";
+import { cleanupLogs } from "./store/log-writer.js";
 import { createServer } from "./server.js";
 
 const args = process.argv.slice(2);
@@ -70,6 +71,13 @@ function ensureAdminToken() {
 }
 
 ensureAdminToken();
+
+{
+  const result = cleanupLogs();
+  if (result.deletedDays.length > 0) {
+    console.log(`[tokenparty] Log cleanup: deleted ${result.deletedDays.length} day(s), freed ${result.freedMB}MB`);
+  }
+}
 
 const app = createServer();
 

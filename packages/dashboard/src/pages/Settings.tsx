@@ -33,13 +33,26 @@ export function formatCost(usdCost: number): string {
   return `$${usdCost.toFixed(4)}`;
 }
 
+interface LogStorageInfo {
+  totalSizeMB: number;
+  maxSizeMB: number;
+  dayCount: number;
+}
+
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsData>(loadSettings);
   const [saved, setSaved] = useState(false);
   const [version, setVersion] = useState("");
+  const [logStorage, setLogStorage] = useState<LogStorageInfo | null>(null);
+  const [maxSizeInput, setMaxSizeInput] = useState("");
+  const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
     api.getVersion().then((v) => setVersion(v)).catch(console.error);
+    api.getLogStorage().then((s) => {
+      setLogStorage(s);
+      setMaxSizeInput(String(s.maxSizeMB));
+    }).catch(console.error);
   }, []);
 
   const update = (patch: Partial<SettingsData>) => {
@@ -83,6 +96,75 @@ export default function Settings() {
         {saved && (
           <div className="text-sm text-green-600">Settings saved</div>
         )}
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6 max-w-lg space-y-6 mt-6">
+        <h3 className="text-lg font-semibold">Log Storage</h3>
+
+        {logStorage && (
+          <div className="text-sm text-gray-600 space-y-1">
+            <p>Current usage: <span className="font-medium text-gray-900">{logStorage.totalSizeMB} MB</span> / {logStorage.maxSizeMB} MB</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+              <div
+                className={`h-2 rounded-full ${logStorage.totalSizeMB / logStorage.maxSizeMB > 0.9 ? "bg-red-500" : logStorage.totalSizeMB / logStorage.maxSizeMB > 0.7 ? "bg-yellow-500" : "bg-blue-500"}`}
+                style={{ width: `${Math.min(100, (logStorage.totalSizeMB / logStorage.maxSizeMB) * 100)}%` }}
+              />
+            </div>
+            <p className="mt-1">Days stored: <span className="font-medium text-gray-900">{logStorage.dayCount}</span></p>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Max Storage Size (MB)</label>
+          <p className="text-xs text-gray-500 mb-2">When exceeded, oldest day's logs are deleted automatically. Minimum: 50 MB.</p>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min={50}
+              step={50}
+              value={maxSizeInput}
+              onChange={(e) => setMaxSizeInput(e.target.value)}
+              className="w-32 border rounded px-3 py-2 text-sm"
+            />
+            <button
+              onClick={() => {
+                const val = Number(maxSizeInput);
+                if (val < 50) return;
+                api.updateLogStorage(val).then((res) => {
+                  setLogStorage({ totalSizeMB: res.totalSizeMB, maxSizeMB: res.maxSizeMB, dayCount: res.dayCount });
+                  setSaved(true);
+                  setTimeout(() => setSaved(false), 1500);
+                  if (res.cleaned.deletedDays.length > 0) {
+                    alert(`Cleaned up ${res.cleaned.deletedDays.length} day(s), freed ${res.cleaned.freedMB} MB`);
+                  }
+                }).catch(console.error);
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <button
+            disabled={cleaning}
+            onClick={() => {
+              setCleaning(true);
+              api.triggerLogCleanup().then((res) => {
+                setLogStorage({ totalSizeMB: res.totalSizeMB, maxSizeMB: res.maxSizeMB, dayCount: res.dayCount });
+                if (res.cleaned.deletedDays.length > 0) {
+                  alert(`Cleaned up ${res.cleaned.deletedDays.length} day(s), freed ${res.cleaned.freedMB} MB`);
+                } else {
+                  alert("No cleanup needed — storage is within limits.");
+                }
+              }).catch(console.error).finally(() => setCleaning(false));
+            }}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200 border"
+          >
+            {cleaning ? "Cleaning..." : "Run Cleanup Now"}
+          </button>
+        </div>
       </div>
 
       {version && (

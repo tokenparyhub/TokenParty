@@ -64,6 +64,11 @@ function runMigrations(db: Database.Database) {
       created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   const columns = db.prepare(`PRAGMA table_info(request_index)`).all() as { name: string }[];
@@ -129,4 +134,13 @@ export function createAdminToken(): string {
 export function validateAdminToken(token: string): boolean {
   const row = db.prepare(`SELECT 1 FROM admin_token WHERE token = ? AND expires_at > ?`).get(token, Date.now());
   return !!row;
+}
+
+export function getSetting(key: string): string | null {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string) {
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value);
 }
