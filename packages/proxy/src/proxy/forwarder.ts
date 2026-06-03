@@ -152,11 +152,11 @@ export async function forwardRequest(
                     if (converted.content) fullContent += converted.content;
                     await s.writeSSE({ data: JSON.stringify(converted.chunk) });
                   }
-                  if (parsed.type === "message_delta" && parsed.usage) {
-                    usage = { input_tokens: parsed.usage.input_tokens ?? 0, output_tokens: parsed.usage.output_tokens ?? 0, cache_read_tokens: parsed.usage.cache_read_input_tokens ?? 0, cache_write_tokens: parsed.usage.cache_creation_input_tokens ?? 0 };
-                  }
                   if (parsed.type === "message_start" && parsed.message?.usage) {
-                    usage = { ...usage, input_tokens: parsed.message.usage.input_tokens ?? 0, cache_read_tokens: parsed.message.usage.cache_read_input_tokens ?? 0, cache_write_tokens: parsed.message.usage.cache_creation_input_tokens ?? 0 } as any;
+                    usage = { ...(usage ?? { input_tokens: 0, output_tokens: 0 }), input_tokens: parsed.message.usage.input_tokens ?? 0, cache_read_tokens: parsed.message.usage.cache_read_input_tokens ?? 0, cache_write_tokens: parsed.message.usage.cache_creation_input_tokens ?? 0 } as any;
+                  }
+                  if (parsed.type === "message_delta" && parsed.usage) {
+                    usage = { ...(usage ?? { input_tokens: 0, output_tokens: 0 }), output_tokens: parsed.usage.output_tokens ?? 0 } as any;
                   }
                 } else if (provider.type === "openai" && entry === "anthropic") {
                   const converted = o2aConverter.convert(parsed, model);

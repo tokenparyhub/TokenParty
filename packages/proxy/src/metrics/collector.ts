@@ -27,8 +27,7 @@ export function calculateCost(
   pricing?: { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number }
 ): number {
   if (!pricing) return 0;
-  const nonCachedInput = Math.max(0, inputTokens - cacheReadTokens);
-  const inputCost = (nonCachedInput / 1_000_000) * (pricing.inputPrice ?? 0);
+  const inputCost = (inputTokens / 1_000_000) * (pricing.inputPrice ?? 0);
   const cacheReadCost = (cacheReadTokens / 1_000_000) * (pricing.cacheReadPrice ?? pricing.inputPrice ?? 0);
   const cacheWriteCost = (cacheWriteTokens / 1_000_000) * (pricing.cacheWritePrice ?? pricing.inputPrice ?? 0);
   const outputCost = (outputTokens / 1_000_000) * (pricing.outputPrice ?? 0);
