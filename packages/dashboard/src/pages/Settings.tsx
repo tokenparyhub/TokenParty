@@ -39,7 +39,7 @@ interface LogStorageInfo {
   dayCount: number;
 }
 
-export default function Settings() {
+export default function Settings({ mode = "admin" }: { mode?: "admin" | "user" }) {
   const [settings, setSettings] = useState<SettingsData>(loadSettings);
   const [saved, setSaved] = useState(false);
   const [version, setVersion] = useState("");
@@ -51,12 +51,14 @@ export default function Settings() {
   const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
-    api.getVersion().then((v) => setVersion(v)).catch(console.error);
-    api.getLogStorage().then((s) => {
-      setLogStorage(s);
-      setMaxSizeInput(String(s.maxSizeMB));
-    }).catch(console.error);
-  }, []);
+    if (mode === "admin") {
+      api.getVersion().then((v) => setVersion(v)).catch(console.error);
+      api.getLogStorage().then((s) => {
+        setLogStorage(s);
+        setMaxSizeInput(String(s.maxSizeMB));
+      }).catch(console.error);
+    }
+  }, [mode]);
 
   const update = (patch: Partial<SettingsData>) => {
     const next = { ...settings, ...patch };
@@ -101,7 +103,7 @@ export default function Settings() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 max-w-lg space-y-6 mt-6">
+      {mode === "admin" && <div className="bg-white rounded-lg shadow p-6 max-w-lg space-y-6 mt-6">
         <h3 className="text-lg font-semibold">Log Storage</h3>
 
         {logStorage && (
@@ -165,9 +167,9 @@ export default function Settings() {
             {cleaning ? "Clearing..." : "Clear All Logs"}
           </button>
         </div>
-      </div>
+      </div>}
 
-      {version && (
+      {mode === "admin" && version && (
         <div className="bg-white rounded-lg shadow p-6 max-w-lg mt-6">
           <div className="flex items-center justify-between">
             <div>

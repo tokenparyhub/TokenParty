@@ -12,7 +12,7 @@ interface Filters {
 
 const emptyFilters: Filters = { token_id: "", provider_id: "", model: "", status: "", tags: "" };
 
-export default function Requests() {
+export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }) {
   const [requests, setRequests] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -26,28 +26,41 @@ export default function Requests() {
   const limit = 20;
 
   useEffect(() => {
-    api.getKeys().then((k) => {
-      setKeys(k);
-      const map: Record<string, string> = {};
-      for (const item of k) map[item.key] = item.name;
-      setKeyNames(map);
-    }).catch(console.error);
-    api.getProviders().then((p) => setProviders(p)).catch(console.error);
-    api.getModels().then((m) => setModels(m.map((x) => x.id))).catch(console.error);
-  }, []);
+    if (mode === "admin") {
+      api.getKeys().then((k) => {
+        setKeys(k);
+        const map: Record<string, string> = {};
+        for (const item of k) map[item.key] = item.name;
+        setKeyNames(map);
+      }).catch(console.error);
+      api.getProviders().then((p) => setProviders(p)).catch(console.error);
+    }
+    if (mode === "admin") {
+      api.getModels().then((m) => setModels(m.map((x) => x.id))).catch(console.error);
+    } else {
+      api.getUserModels().then((m) => setModels(m.map((x) => x.id))).catch(console.error);
+    }
+  }, [mode]);
 
   useEffect(() => {
     const params: any = { limit, offset };
-    if (filters.token_id) params.token_id = filters.token_id;
     if (filters.provider_id) params.provider_id = filters.provider_id;
     if (filters.model) params.model = filters.model;
     if (filters.status) params.status = filters.status;
     if (filters.tags) params.tags = filters.tags;
-    api.getRequests(params).then((res) => {
-      setRequests(res.data);
-      setTotal(res.total);
-    }).catch(console.error);
-  }, [offset, filters]);
+    if (mode === "admin") {
+      if (filters.token_id) params.token_id = filters.token_id;
+      api.getRequests(params).then((res) => {
+        setRequests(res.data);
+        setTotal(res.total);
+      }).catch(console.error);
+    } else {
+      api.getUserRequests(params).then((res) => {
+        setRequests(res.data);
+        setTotal(res.total);
+      }).catch(console.error);
+    }
+  }, [offset, filters, mode]);
 
   const updateFilter = (patch: Partial<Filters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -57,7 +70,7 @@ export default function Requests() {
   const hasFilters = Object.values(filters).some(Boolean);
 
   const loadDetail = async (id: string) => {
-    const detail = await api.getRequestDetail(id);
+    const detail = mode === "admin" ? await api.getRequestDetail(id) : await api.getUserRequestDetail(id);
     setSelected(detail);
     setActiveTab("request");
   };
@@ -71,14 +84,18 @@ export default function Requests() {
       <div className="flex-1 min-w-0">
         <h2 className="text-2xl font-bold mb-4">Requests</h2>
         <div className="flex flex-wrap gap-2 mb-4 items-end">
-          <select value={filters.token_id} onChange={(e) => updateFilter({ token_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-            <option value="">All Users</option>
-            {keys.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
-          </select>
-          <select value={filters.provider_id} onChange={(e) => updateFilter({ provider_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-            <option value="">All Providers</option>
-            {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          {mode === "admin" && (
+            <select value={filters.token_id} onChange={(e) => updateFilter({ token_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+              <option value="">All Users</option>
+              {keys.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+            </select>
+          )}
+          {mode === "admin" && (
+            <select value={filters.provider_id} onChange={(e) => updateFilter({ provider_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+              <option value="">All Providers</option>
+              {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
           <select value={filters.model} onChange={(e) => updateFilter({ model: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
             <option value="">All Models</option>
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
