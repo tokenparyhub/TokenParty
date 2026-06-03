@@ -16,6 +16,7 @@ export interface RequestRecord {
   apiKeyIndex?: number;
   pricing?: { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number };
   currency?: string;
+  customTags?: string;
 }
 
 export function calculateCost(
@@ -45,12 +46,12 @@ export function recordRequest(record: RequestRecord) {
   if (record.currency === "CNY") cost *= CNY_TO_USD;
 
   db.prepare(`
-    INSERT INTO request_index (id, timestamp, token_id, provider_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, latency_ms, status, log_file, error, api_key_index, cost)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO request_index (id, timestamp, token_id, provider_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, latency_ms, status, log_file, error, api_key_index, cost, custom_tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     record.id, now, record.tokenId, record.providerId, record.model,
     record.inputTokens, record.outputTokens, cacheReadTokens, cacheWriteTokens, record.latencyMs,
-    record.status, record.logFile, record.error ?? null, record.apiKeyIndex ?? 0, cost
+    record.status, record.logFile, record.error ?? null, record.apiKeyIndex ?? 0, cost, record.customTags ?? ""
   );
 
   db.prepare(`

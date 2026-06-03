@@ -46,14 +46,19 @@ export const api = {
     return request<any[]>(`/stats?${params}`);
   },
 
-  getRequests: (params?: { limit?: number; offset?: number; token_id?: string; provider_id?: string }) => {
+  getRequests: (params?: { limit?: number; offset?: number; token_id?: string; provider_id?: string; model?: string; status?: string; tags?: string }) => {
     const search = new URLSearchParams();
     if (params?.limit) search.set("limit", String(params.limit));
     if (params?.offset) search.set("offset", String(params.offset));
     if (params?.token_id) search.set("token_id", params.token_id);
     if (params?.provider_id) search.set("provider_id", params.provider_id);
+    if (params?.model) search.set("model", params.model);
+    if (params?.status) search.set("status", params.status);
+    if (params?.tags) search.set("tags", params.tags);
     return request<{ data: any[]; total: number }>(`/requests?${search}`);
   },
+
+  getModels: () => request<{ id: string; providers: string[] }[]>("/models"),
 
   getRequestDetail: (id: string) => request<any>(`/requests/${id}`),
 

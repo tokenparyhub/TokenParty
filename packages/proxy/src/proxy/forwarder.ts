@@ -83,6 +83,8 @@ export async function forwardRequest(
     }
   });
 
+  const customTags = c.req.raw.headers.get("x-tkparty-tags") ?? "";
+
   const logFile = writeLog(requestId, {
     type: "request",
     timestamp: startTime,
@@ -95,7 +97,7 @@ export async function forwardRequest(
   try {
     // Same protocol streaming: use http.request for raw passthrough (no auto-decompression)
     if (isStreaming && !needsStreamConversion) {
-      return await rawStreamPassthrough(c, targetUrl, upstreamHeaders, body, requestId, provider, model, token, startTime, logFile, apiKeyIndex, pricing);
+      return await rawStreamPassthrough(c, targetUrl, upstreamHeaders, body, requestId, provider, model, token, startTime, logFile, apiKeyIndex, pricing, customTags);
     }
 
     const response = await fetch(targetUrl, {
@@ -219,6 +221,7 @@ export async function forwardRequest(
             apiKeyIndex,
             pricing,
             currency: provider.currency,
+            customTags,
           });
         }
       });
@@ -250,6 +253,7 @@ export async function forwardRequest(
       apiKeyIndex,
       pricing,
       currency: provider.currency,
+      customTags,
     });
 
     if (response.status >= 500 && provider.fallback) {
@@ -279,6 +283,7 @@ export async function forwardRequest(
       apiKeyIndex,
       pricing,
       currency: provider.currency,
+      customTags,
     });
 
     if (provider.fallback) {
@@ -332,6 +337,7 @@ function rawStreamPassthrough(
   logFile: string,
   apiKeyIndex: number,
   pricing?: { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number },
+  customTags?: string,
 ): Promise<Response> {
   const url = new URL(targetUrl);
   const reqFn = url.protocol === "https:" ? httpsRequest : httpRequest;
@@ -362,7 +368,7 @@ function rawStreamPassthrough(
         },
         flush(callback) {
           // Async parse for logging after stream ends
-          asyncParseBufferForLog(rawChunks, res.headers["content-encoding"] as string | undefined, requestId, respHeaders, provider, model, token, startTime, logFile, apiKeyIndex, pricing);
+          asyncParseBufferForLog(rawChunks, res.headers["content-encoding"] as string | undefined, requestId, respHeaders, provider, model, token, startTime, logFile, apiKeyIndex, pricing, customTags);
           callback();
         },
       });
@@ -389,6 +395,7 @@ function asyncParseBufferForLog(
   logFile: string,
   apiKeyIndex: number,
   pricing?: { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number },
+  customTags?: string,
 ) {
   (async () => {
     let text: string;
@@ -469,6 +476,7 @@ function asyncParseBufferForLog(
       apiKeyIndex,
       pricing,
       currency: provider.currency,
+      customTags,
     });
   })().catch((e) => console.error(`[tokenparty] async log parse error for ${requestId}:`, e));
 }

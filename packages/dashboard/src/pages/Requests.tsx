@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { formatCost } from "./Settings";
 
+interface Filters {
+  token_id: string;
+  provider_id: string;
+  model: string;
+  status: string;
+  tags: string;
+}
+
+const emptyFilters: Filters = { token_id: "", provider_id: "", model: "", status: "", tags: "" };
+
 export default function Requests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -9,22 +19,42 @@ export default function Requests() {
   const [selected, setSelected] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"request" | "response">("request");
   const [keyNames, setKeyNames] = useState<Record<string, string>>({});
+  const [keys, setKeys] = useState<{ key: string; name: string }[]>([]);
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [filters, setFilters] = useState<Filters>(emptyFilters);
   const limit = 20;
 
   useEffect(() => {
-    api.getKeys().then((keys) => {
+    api.getKeys().then((k) => {
+      setKeys(k);
       const map: Record<string, string> = {};
-      for (const k of keys) map[k.key] = k.name;
+      for (const item of k) map[item.key] = item.name;
       setKeyNames(map);
     }).catch(console.error);
+    api.getProviders().then((p) => setProviders(p)).catch(console.error);
+    api.getModels().then((m) => setModels(m.map((x) => x.id))).catch(console.error);
   }, []);
 
   useEffect(() => {
-    api.getRequests({ limit, offset }).then((res) => {
+    const params: any = { limit, offset };
+    if (filters.token_id) params.token_id = filters.token_id;
+    if (filters.provider_id) params.provider_id = filters.provider_id;
+    if (filters.model) params.model = filters.model;
+    if (filters.status) params.status = filters.status;
+    if (filters.tags) params.tags = filters.tags;
+    api.getRequests(params).then((res) => {
       setRequests(res.data);
       setTotal(res.total);
     }).catch(console.error);
-  }, [offset]);
+  }, [offset, filters]);
+
+  const updateFilter = (patch: Partial<Filters>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+    setOffset(0);
+  };
+
+  const hasFilters = Object.values(filters).some(Boolean);
 
   const loadDetail = async (id: string) => {
     const detail = await api.getRequestDetail(id);
@@ -40,6 +70,37 @@ export default function Requests() {
       {/* List */}
       <div className="flex-1 min-w-0">
         <h2 className="text-2xl font-bold mb-4">Requests</h2>
+        <div className="flex flex-wrap gap-2 mb-4 items-end">
+          <select value={filters.token_id} onChange={(e) => updateFilter({ token_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+            <option value="">All Users</option>
+            {keys.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+          </select>
+          <select value={filters.provider_id} onChange={(e) => updateFilter({ provider_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+            <option value="">All Providers</option>
+            {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select value={filters.model} onChange={(e) => updateFilter({ model: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+            <option value="">All Models</option>
+            {models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={filters.status} onChange={(e) => updateFilter({ status: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+            <option value="">All Status</option>
+            <option value="ok">Success</option>
+            <option value="error">Error</option>
+          </select>
+          <input
+            type="text"
+            placeholder="Tags (comma separated)"
+            value={filters.tags}
+            onChange={(e) => updateFilter({ tags: e.target.value })}
+            className="border rounded px-2 py-1.5 text-sm w-48"
+          />
+          {hasFilters && (
+            <button onClick={() => { setFilters(emptyFilters); setOffset(0); }} className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700">
+              Reset
+            </button>
+          )}
+        </div>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
@@ -51,6 +112,7 @@ export default function Requests() {
                 <th className="px-3 py-2 text-right">Cost</th>
                 <th className="px-3 py-2 text-right">Latency</th>
                 <th className="px-3 py-2 text-center">Status</th>
+                <th className="px-3 py-2 text-left">Tags</th>
               </tr>
             </thead>
             <tbody>
@@ -71,6 +133,7 @@ export default function Requests() {
                       {req.status}
                     </span>
                   </td>
+                  <td className="px-3 py-2 text-xs text-gray-500 max-w-[150px] truncate">{req.custom_tags || ""}</td>
                 </tr>
               ))}
             </tbody>

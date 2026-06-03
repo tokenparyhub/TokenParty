@@ -170,18 +170,27 @@ apiRoutes.get("/requests", (c) => {
   const offset = Number(c.req.query("offset") ?? 0);
   const tokenId = c.req.query("token_id");
   const providerId = c.req.query("provider_id");
+  const model = c.req.query("model");
+  const status = c.req.query("status");
+  const tags = c.req.query("tags");
 
-  let query = `SELECT * FROM request_index WHERE 1=1`;
+  let where = `WHERE 1=1`;
   const params: any[] = [];
 
-  if (tokenId) { query += ` AND token_id = ?`; params.push(tokenId); }
-  if (providerId) { query += ` AND provider_id = ?`; params.push(providerId); }
+  if (tokenId) { where += ` AND token_id = ?`; params.push(tokenId); }
+  if (providerId) { where += ` AND provider_id = ?`; params.push(providerId); }
+  if (model) { where += ` AND model = ?`; params.push(model); }
+  if (status === "ok") { where += ` AND status = 200`; }
+  else if (status === "error") { where += ` AND status != 200`; }
+  if (tags) {
+    for (const tag of tags.split(",").map((t) => t.trim()).filter(Boolean)) {
+      where += ` AND custom_tags LIKE ?`;
+      params.push(`%${tag}%`);
+    }
+  }
 
-  query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
-
-  const rows = db.prepare(query).all(...params);
-  const total = db.prepare(`SELECT COUNT(*) as count FROM request_index`).get() as any;
+  const rows = db.prepare(`SELECT * FROM request_index ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  const total = db.prepare(`SELECT COUNT(*) as count FROM request_index ${where}`).get(...params) as any;
   return c.json({ data: rows, total: total.count });
 });
 

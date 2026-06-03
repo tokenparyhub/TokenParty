@@ -52,7 +52,8 @@ function runMigrations(db: Database.Database) {
       error TEXT,
       api_key_index INTEGER DEFAULT 0,
       cost REAL DEFAULT 0,
-      currency TEXT DEFAULT 'USD'
+      currency TEXT DEFAULT 'USD',
+      custom_tags TEXT DEFAULT ''
     );
 
     CREATE INDEX IF NOT EXISTS idx_request_timestamp ON request_index(timestamp);
@@ -90,6 +91,9 @@ function runMigrations(db: Database.Database) {
   }
   if (!colNames.has("currency")) {
     db.exec(`ALTER TABLE request_index ADD COLUMN currency TEXT DEFAULT 'USD'`);
+  }
+  if (!colNames.has("custom_tags")) {
+    db.exec(`ALTER TABLE request_index ADD COLUMN custom_tags TEXT DEFAULT ''`);
   }
 
   const dailyCols = db.prepare(`PRAGMA table_info(usage_daily)`).all() as { name: string }[];
