@@ -106,7 +106,7 @@ export default function Providers() {
     if (!trimmed || trimmed === oldName) { setEditingGroup(null); return; }
     const inGroup = providers.filter((p) => p.group === oldName);
     for (const p of inGroup) {
-      await api.updateProvider(p.id, { ...p, group: trimmed });
+      await api.updateProvider(p.id, { group: trimmed });
     }
     setEmptyGroups((prev) => {
       const next = new Set(prev);
@@ -122,7 +122,7 @@ export default function Providers() {
     const inGroup = providers.filter((p) => p.group === group);
     if (inGroup.length > 0 && !confirm(`Move ${inGroup.length} provider(s) to Ungrouped and delete group "${group}"?`)) return;
     for (const p of inGroup) {
-      await api.updateProvider(p.id, { ...p, group: undefined });
+      await api.updateProvider(p.id, { group: null });
     }
     setEmptyGroups((prev) => {
       const next = new Set(prev);
@@ -137,9 +137,9 @@ export default function Providers() {
     if (!draggedId) return;
     const provider = providers.find((p) => p.id === draggedId);
     if (!provider) return;
-    const newGroup = targetGroup === UNGROUPED ? undefined : targetGroup;
-    if (provider.group === newGroup) return;
-    await api.updateProvider(provider.id, { ...provider, group: newGroup });
+    const newGroup = targetGroup === UNGROUPED ? null : targetGroup;
+    if (provider.group === (newGroup ?? undefined)) return;
+    await api.updateProvider(provider.id, { group: newGroup });
     load();
     setDraggedId(null);
   };

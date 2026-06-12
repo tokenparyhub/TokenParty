@@ -99,8 +99,21 @@ apiRoutes.put("/providers/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
   if (body.apiKey) {
+    const config = getConfig();
+    const existing = config.providers.find((p) => p.id === id);
+    const existingKeys = existing ? (Array.isArray(existing.apiKey) ? existing.apiKey : [existing.apiKey]) : [];
+
     if (Array.isArray(body.apiKey)) {
-      if (body.apiKey.every((k: string) => k.includes("****"))) delete body.apiKey;
+      const resolved = body.apiKey.map((k: string, i: number) => {
+        if (k.includes("****") && i < existingKeys.length) return existingKeys[i];
+        if (k.includes("****")) return null;
+        return k;
+      }).filter(Boolean);
+      if (resolved.length === 0) {
+        delete body.apiKey;
+      } else {
+        body.apiKey = resolved.length === 1 ? resolved[0] : resolved;
+      }
     } else if (body.apiKey.includes("****")) {
       delete body.apiKey;
     }
