@@ -13,7 +13,6 @@ interface Provider {
   enabled: boolean;
   group?: string;
   currency?: string;
-  _apiKeysText?: string;
 }
 
 function getModelId(m: ModelConfig): string {
@@ -55,7 +54,11 @@ export default function Providers() {
 
   const save = async () => {
     if (!editing) return;
-    const { _apiKeysText, ...data } = editing;
+    const data = { ...editing };
+    if (Array.isArray(data.apiKey)) {
+      const keys = data.apiKey.filter((k) => k.trim());
+      data.apiKey = keys.length === 1 ? keys[0] : keys;
+    }
     data.models = normalizeModels(data.models ?? []);
     if (isNew) {
       await api.createProvider(data);
@@ -277,19 +280,41 @@ export default function Providers() {
               </div>
               <Field label="Base URL" value={editing.baseUrl ?? ""} onChange={(v) => setEditing({ ...editing, baseUrl: v })} />
               <div>
-                <label className="block text-sm text-gray-600 mb-1">API Keys (one per line, multiple keys enable load balancing)</label>
-                <textarea
-                  value={editing._apiKeysText ?? (Array.isArray(editing.apiKey) ? editing.apiKey.join("\n") : (editing.apiKey ?? ""))}
-                  onChange={(e) => {
-                    const text = e.target.value;
-                    const keys = text.split("\n").map(s => s.trim()).filter(Boolean);
-                    setEditing({ ...editing, _apiKeysText: text, apiKey: keys.length === 1 ? keys[0] : keys });
-                  }}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  rows={3}
-                  placeholder="sk-your-api-key"
-                  className="w-full border rounded px-3 py-2 text-sm font-mono"
-                />
+                <label className="block text-sm text-gray-600 mb-1">API Keys</label>
+                <div className="space-y-1.5">
+                  {(Array.isArray(editing.apiKey) ? editing.apiKey : [editing.apiKey ?? ""]).map((key, i, arr) => (
+                    <div key={i} className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={key}
+                        onChange={(e) => {
+                          const keys = [...arr];
+                          keys[i] = e.target.value;
+                          setEditing({ ...editing, apiKey: keys.length === 1 ? keys[0] : keys });
+                        }}
+                        placeholder="sk-your-api-key"
+                        className="flex-1 border rounded px-3 py-1.5 text-sm font-mono"
+                      />
+                      {arr.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const keys = arr.filter((_, j) => j !== i);
+                            setEditing({ ...editing, apiKey: keys.length === 1 ? keys[0] : keys });
+                          }}
+                          className="text-red-400 hover:text-red-600 px-1.5 text-sm"
+                        >×</button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const keys = Array.isArray(editing.apiKey) ? [...editing.apiKey, ""] : [editing.apiKey ?? "", ""];
+                      setEditing({ ...editing, apiKey: keys });
+                    }}
+                    className="text-xs text-indigo-600 hover:underline"
+                  >+ Add key</button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Multiple keys enable load balancing</p>
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Currency</label>
