@@ -24,8 +24,10 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<"request" | "response">("request");
-  const [activeSection, setActiveSection] = useState("headers");
+  const [reqSection, setReqSection] = useState("headers");
+  const [resSection, setResSection] = useState("headers");
+  const [reqCollapsed, setReqCollapsed] = useState(false);
+  const [resCollapsed, setResCollapsed] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -113,8 +115,10 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
   const loadDetail = async (id: string) => {
     const detail = mode === "admin" ? await api.getRequestDetail(id) : await api.getUserRequestDetail(id);
     if (!selected) {
-      setActiveTab("request");
-      setActiveSection("headers");
+      setReqSection("headers");
+      setResSection("headers");
+      setReqCollapsed(false);
+      setResCollapsed(false);
     }
     setSelected(detail);
     window.dispatchEvent(new CustomEvent("collapse-nav"));
@@ -302,96 +306,127 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
             <div className="px-4 py-1 bg-red-50 text-red-700 text-xs border-b shrink-0">Error: {resLog.error}</div>
           )}
 
-          {/* Content: side nav + detail */}
+          {/* Content: split panes */}
           <div className="flex-1 flex min-h-0">
-            {/* Section side nav */}
-            <div className="w-32 shrink-0 border-r bg-gray-50 flex flex-col py-1 overflow-y-auto text-xs">
-              {/* Request / Response toggle */}
-              <div className="flex border-b mb-1">
-                <button onClick={() => { setActiveTab("request"); setActiveSection("headers"); }} className={`flex-1 py-1.5 text-center font-medium ${activeTab === "request" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-gray-400"}`}>Req</button>
-                <button onClick={() => { setActiveTab("response"); setActiveSection("headers"); }} className={`flex-1 py-1.5 text-center font-medium ${activeTab === "response" ? "text-indigo-600 border-b-2 border-indigo-600" : "text-gray-400"}`}>Res</button>
-              </div>
-              {/* Section items */}
-              {activeTab === "request" && reqLog && (
-                <>
-                  <SectionNavItem id="headers" label="Headers" active={activeSection} onClick={setActiveSection} />
-                  <SectionNavItem id="messages" label={`Messages (${reqLog.body?.messages?.length ?? 0})`} active={activeSection} onClick={setActiveSection} />
-                  {reqLog.body?.system && <SectionNavItem id="system" label="System" active={activeSection} onClick={setActiveSection} />}
-                  {reqLog.body?.tools && <SectionNavItem id="tools" label={`Tools (${reqLog.body.tools.length})`} active={activeSection} onClick={setActiveSection} />}
-                  {adapter && adapterCtx && adapter.getRequestSections(reqLog, resLog, adapterCtx).map((s) => (
-                    <SectionNavItem key={s.id} id={s.id} label={s.label} active={activeSection} onClick={setActiveSection} />
-                  ))}
-                  <SectionNavItem id="raw" label="Raw JSON" active={activeSection} onClick={setActiveSection} />
-                </>
-              )}
-              {activeTab === "response" && resLog && (
-                <>
-                  <SectionNavItem id="headers" label="Headers" active={activeSection} onClick={setActiveSection} />
-                  <SectionNavItem id="content" label="Content" active={activeSection} onClick={setActiveSection} />
-                  {resLog.streaming && resLog.body && Array.isArray(resLog.body) && resLog.body.length > 0 && (
-                    <SectionNavItem id="events" label={`SSE (${resLog.body.length})`} active={activeSection} onClick={setActiveSection} />
-                  )}
-                  {!resLog.streaming && <SectionNavItem id="raw" label="Raw JSON" active={activeSection} onClick={setActiveSection} />}
-                </>
-              )}
-            </div>
-
-            {/* Section content */}
-            <div className="flex-1 overflow-auto p-3 text-xs min-w-0">
-              {activeTab === "request" && reqLog && (
-                <>
-                  {activeSection === "headers" && <HeadersTable headers={reqLog.headers} />}
-                  {activeSection === "messages" && <MessageList messages={reqLog.body?.messages} />}
-                  {activeSection === "system" && reqLog.body?.system && (
-                    <div className="bg-amber-50 border border-amber-200 rounded p-3 whitespace-pre-wrap">
-                      {typeof reqLog.body.system === "string"
-                        ? reqLog.body.system
-                        : Array.isArray(reqLog.body.system)
-                          ? reqLog.body.system.map((block: any, i: number) => (
-                              <div key={i}>{block.text ?? JSON.stringify(block)}</div>
-                            ))
-                          : JSON.stringify(reqLog.body.system)}
-                    </div>
-                  )}
-                  {activeSection === "tools" && reqLog.body?.tools && <ToolList tools={reqLog.body.tools} />}
-                  {adapter && adapterCtx && adapter.renderSection(activeSection, reqLog, resLog, adapterCtx)}
-                  {activeSection === "raw" && <CopyableJSON data={reqLog.body} />}
-                </>
-              )}
-
-              {activeTab === "response" && resLog && (
-                <>
-                  {activeSection === "headers" && <HeadersTable headers={resLog.headers} />}
-                  {activeSection === "content" && (
-                    resLog.streaming ? (
-                      <StreamingContent events={resLog.body} fallback={resLog.streamContent} />
-                    ) : (
+            {/* Request pane */}
+            {reqCollapsed ? (
+              <button
+                onClick={() => setReqCollapsed(false)}
+                className="w-8 shrink-0 border-r bg-gray-50 flex flex-col items-center justify-center hover:bg-gray-100 text-xs text-gray-400"
+                title="Expand Request"
+              >
+                <span className="writing-vertical">Request</span>
+                <span className="mt-1">&#9654;</span>
+              </button>
+            ) : (
+              <div className={`flex flex-col min-w-0 ${resCollapsed ? "flex-1" : "w-1/2"} border-r`}>
+                <div className="flex items-center border-b bg-gray-50 shrink-0">
+                  <button onClick={() => setReqCollapsed(true)} className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs" title="Collapse">&#9664;</button>
+                  <span className="text-xs font-semibold text-gray-600 mr-2">Request</span>
+                  <div className="flex gap-0.5 overflow-x-auto py-1">
+                    {reqLog && (
                       <>
-                        {resLog.body?.content && <ResponseContent content={resLog.body.content} />}
-                        {resLog.body?.choices?.[0]?.message?.content && (
-                          <ContentBlocks blocks={parseThinkTags(resLog.body.choices[0].message.content)} />
-                        )}
-                        {resLog.body?.object === "response" && resLog.body?.output && (
-                          <ResponsesApiOutput output={resLog.body.output} />
-                        )}
+                        <TabButton id="headers" label="Headers" active={reqSection} onClick={setReqSection} />
+                        <TabButton id="messages" label={`Messages (${reqLog.body?.messages?.length ?? 0})`} active={reqSection} onClick={setReqSection} />
+                        {reqLog.body?.system && <TabButton id="system" label="System" active={reqSection} onClick={setReqSection} />}
+                        {reqLog.body?.tools && <TabButton id="tools" label={`Tools (${reqLog.body.tools.length})`} active={reqSection} onClick={setReqSection} />}
+                        {adapter && adapterCtx && adapter.getRequestSections(reqLog, resLog, adapterCtx).map((s) => (
+                          <TabButton key={s.id} id={s.id} label={s.label} active={reqSection} onClick={setReqSection} />
+                        ))}
+                        <TabButton id="raw" label="Raw" active={reqSection} onClick={setReqSection} />
                       </>
-                    )
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto p-3 text-xs">
+                  {reqLog && (
+                    <>
+                      {reqSection === "headers" && <HeadersTable headers={reqLog.headers} />}
+                      {reqSection === "messages" && <MessageList messages={reqLog.body?.messages} />}
+                      {reqSection === "system" && reqLog.body?.system && (
+                        <div className="bg-amber-50 border border-amber-200 rounded p-3 whitespace-pre-wrap">
+                          {typeof reqLog.body.system === "string"
+                            ? reqLog.body.system
+                            : Array.isArray(reqLog.body.system)
+                              ? reqLog.body.system.map((block: any, i: number) => (
+                                  <div key={i}>{block.text ?? JSON.stringify(block)}</div>
+                                ))
+                              : JSON.stringify(reqLog.body.system)}
+                        </div>
+                      )}
+                      {reqSection === "tools" && reqLog.body?.tools && <ToolList tools={reqLog.body.tools} />}
+                      {adapter && adapterCtx && adapter.renderSection(reqSection, reqLog, resLog, adapterCtx)}
+                      {reqSection === "raw" && <CopyableJSON data={reqLog.body} />}
+                    </>
                   )}
-                  {activeSection === "events" && resLog.streaming && resLog.body && Array.isArray(resLog.body) && (
-                    <div className="bg-gray-50 rounded overflow-auto divide-y divide-gray-200">
-                      {resLog.body.map((event: any, i: number) => (
-                        <SSEEventRow key={i} index={i} event={event} />
-                      ))}
-                    </div>
-                  )}
-                  {activeSection === "raw" && <CopyableJSON data={resLog.body} />}
-                </>
-              )}
+                </div>
+              </div>
+            )}
 
-              {activeTab === "response" && !resLog && (
-                <div className="text-gray-400 italic">No response recorded</div>
-              )}
-            </div>
+            {/* Response pane */}
+            {resCollapsed ? (
+              <button
+                onClick={() => setResCollapsed(false)}
+                className="w-8 shrink-0 bg-gray-50 flex flex-col items-center justify-center hover:bg-gray-100 text-xs text-gray-400"
+                title="Expand Response"
+              >
+                <span className="writing-vertical">Response</span>
+                <span className="mt-1">&#9664;</span>
+              </button>
+            ) : (
+              <div className={`flex flex-col min-w-0 ${reqCollapsed ? "flex-1" : "w-1/2"}`}>
+                <div className="flex items-center border-b bg-gray-50 shrink-0">
+                  <span className="text-xs font-semibold text-gray-600 ml-3 mr-2">Response</span>
+                  <div className="flex gap-0.5 overflow-x-auto py-1">
+                    {resLog && (
+                      <>
+                        <TabButton id="headers" label="Headers" active={resSection} onClick={setResSection} />
+                        <TabButton id="content" label="Content" active={resSection} onClick={setResSection} />
+                        {resLog.streaming && resLog.body && Array.isArray(resLog.body) && resLog.body.length > 0 && (
+                          <TabButton id="events" label={`SSE (${resLog.body.length})`} active={resSection} onClick={setResSection} />
+                        )}
+                        {!resLog.streaming && <TabButton id="raw" label="Raw" active={resSection} onClick={setResSection} />}
+                      </>
+                    )}
+                  </div>
+                  <div className="ml-auto">
+                    <button onClick={() => setResCollapsed(true)} className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs" title="Collapse">&#9654;</button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto p-3 text-xs">
+                  {resLog ? (
+                    <>
+                      {resSection === "headers" && <HeadersTable headers={resLog.headers} />}
+                      {resSection === "content" && (
+                        resLog.streaming ? (
+                          <StreamingContent events={resLog.body} fallback={resLog.streamContent} />
+                        ) : (
+                          <>
+                            {resLog.body?.content && <ResponseContent content={resLog.body.content} />}
+                            {resLog.body?.choices?.[0]?.message?.content && (
+                              <ContentBlocks blocks={parseThinkTags(resLog.body.choices[0].message.content)} />
+                            )}
+                            {resLog.body?.object === "response" && resLog.body?.output && (
+                              <ResponsesApiOutput output={resLog.body.output} />
+                            )}
+                          </>
+                        )
+                      )}
+                      {resSection === "events" && resLog.streaming && resLog.body && Array.isArray(resLog.body) && (
+                        <div className="bg-gray-50 rounded overflow-auto divide-y divide-gray-200">
+                          {resLog.body.map((event: any, i: number) => (
+                            <SSEEventRow key={i} index={i} event={event} />
+                          ))}
+                        </div>
+                      )}
+                      {resSection === "raw" && <CopyableJSON data={resLog.body} />}
+                    </>
+                  ) : (
+                    <div className="text-gray-400 italic">No response recorded</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -401,11 +436,11 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
 
 // --- Token Usage Bar ---
 
-function SectionNavItem({ id, label, active, onClick }: { id: string; label: string; active: string; onClick: (id: string) => void }) {
+function TabButton({ id, label, active, onClick }: { id: string; label: string; active: string; onClick: (id: string) => void }) {
   return (
     <button
       onClick={() => onClick(id)}
-      className={`text-left px-3 py-1.5 text-xs ${active === id ? "bg-white text-indigo-600 font-medium border-r-2 border-indigo-600" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"}`}
+      className={`px-2 py-1 text-xs whitespace-nowrap rounded ${active === id ? "bg-white text-indigo-600 font-medium shadow-sm" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"}`}
     >
       {label}
     </button>
