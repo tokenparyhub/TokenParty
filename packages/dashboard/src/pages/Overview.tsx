@@ -76,6 +76,23 @@ export default function Overview() {
   const byProvider = aggregate("provider");
   const byModel = aggregate("model");
 
+  const byAgent = (() => {
+    const map = new Map<string, { requests: number; input: number; output: number; cacheRead: number; cost: number }>();
+    for (const row of stats) {
+      const agent = row.agent || "unknown";
+      const existing = map.get(agent) ?? { requests: 0, input: 0, output: 0, cacheRead: 0, cost: 0 };
+      existing.requests += row.request_count;
+      existing.input += row.input_tokens;
+      existing.output += row.output_tokens;
+      existing.cacheRead += row.cache_read_tokens ?? 0;
+      existing.cost += row.cost ?? 0;
+      map.set(agent, existing);
+    }
+    return Array.from(map.entries())
+      .map(([key, val]) => ({ key, label: key, ...val }))
+      .sort((a, b) => b.cost - a.cost);
+  })();
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -108,10 +125,11 @@ export default function Overview() {
         </MiniChart>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <BreakdownTable title="By User" data={byUser} />
         <BreakdownTable title="By Provider" data={byProvider} />
         <BreakdownTable title="By Model" data={byModel} />
+        <BreakdownTable title="By Agent" data={byAgent} />
       </div>
     </div>
   );

@@ -56,6 +56,22 @@ export default function UserDashboard() {
       .sort((a, b) => b.cost - a.cost);
   })();
 
+  const byAgent = (() => {
+    const map = new Map<string, { requests: number; input: number; output: number; cost: number }>();
+    for (const row of stats) {
+      const agent = row.agent || "unknown";
+      const existing = map.get(agent) ?? { requests: 0, input: 0, output: 0, cost: 0 };
+      existing.requests += row.request_count;
+      existing.input += row.input_tokens;
+      existing.output += row.output_tokens;
+      existing.cost += row.cost ?? 0;
+      map.set(agent, existing);
+    }
+    return Array.from(map.entries())
+      .map(([agent, val]) => ({ agent, ...val }))
+      .sort((a, b) => b.cost - a.cost);
+  })();
+
   const cacheHitRate = profile
     ? (profile.monthlyInputTokens + profile.monthlyCacheReadTokens) > 0
       ? ((profile.monthlyCacheReadTokens / (profile.monthlyInputTokens + profile.monthlyCacheReadTokens)) * 100).toFixed(1)
@@ -152,33 +168,64 @@ export default function UserDashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <h3 className="font-semibold text-sm text-gray-700 px-4 py-3 border-b">Cost by Model</h3>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left text-xs text-gray-500">Model</th>
-              <th className="px-4 py-2 text-right text-xs text-gray-500">Requests</th>
-              <th className="px-4 py-2 text-right text-xs text-gray-500">Input Tokens</th>
-              <th className="px-4 py-2 text-right text-xs text-gray-500">Output Tokens</th>
-              <th className="px-4 py-2 text-right text-xs text-gray-500">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byModel.map((row) => (
-              <tr key={row.model} className="border-t">
-                <td className="px-4 py-2 font-mono text-xs">{row.model}</td>
-                <td className="px-4 py-2 text-right text-xs">{row.requests.toLocaleString()}</td>
-                <td className="px-4 py-2 text-right text-xs">{row.input.toLocaleString()}</td>
-                <td className="px-4 py-2 text-right text-xs">{row.output.toLocaleString()}</td>
-                <td className="px-4 py-2 text-right text-xs">{formatCost(row.cost)}</td>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <h3 className="font-semibold text-sm text-gray-700 px-4 py-3 border-b">Cost by Model</h3>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">Model</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Requests</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Input</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Output</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Cost</th>
               </tr>
-            ))}
-            {byModel.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-xs">No data</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {byModel.map((row) => (
+                <tr key={row.model} className="border-t">
+                  <td className="px-4 py-2 font-mono text-xs">{row.model}</td>
+                  <td className="px-4 py-2 text-right text-xs">{row.requests.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-xs">{row.input.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-xs">{row.output.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-xs">{formatCost(row.cost)}</td>
+                </tr>
+              ))}
+              {byModel.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-xs">No data</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <h3 className="font-semibold text-sm text-gray-700 px-4 py-3 border-b">Cost by Agent</h3>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">Agent</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Requests</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Input</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Output</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byAgent.map((row) => (
+                <tr key={row.agent} className="border-t">
+                  <td className="px-4 py-2 font-mono text-xs">{row.agent}</td>
+                  <td className="px-4 py-2 text-right text-xs">{row.requests.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-xs">{row.input.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-xs">{row.output.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-xs">{formatCost(row.cost)}</td>
+                </tr>
+              ))}
+              {byAgent.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-xs">No data</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
