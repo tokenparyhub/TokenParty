@@ -78,14 +78,9 @@ export async function forwardRequest(
     upstreamHeaders["anthropic-version"] ??= "2023-06-01";
   }
 
-  // Capture incoming request headers (sanitize auth)
   const reqHeaders: Record<string, string> = {};
   c.req.raw.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "authorization") {
-      reqHeaders[key] = value.slice(0, 10) + "****";
-    } else {
-      reqHeaders[key] = value;
-    }
+    reqHeaders[key] = value;
   });
 
   const extractedTags = extractTags({ headers: c.req.raw.headers, path: c.req.path, body, model });

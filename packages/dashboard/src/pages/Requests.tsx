@@ -287,7 +287,7 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
             {/* Meta chips */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-200"><span className="text-gray-400">Model</span> <span className="font-medium">{selected.model}</span></span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-200"><span className="text-gray-400">Provider</span> {selected.provider_id}</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-200"><span className="text-gray-400">Provider</span> {providers.find((p) => p.id === selected.provider_id)?.name ?? selected.provider_id}</span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-200"><span className="text-gray-400">Latency</span> {selected.latency_ms}ms</span>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${selected.status === 200 ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"}`}><span className="text-gray-400">Status</span> {selected.status}</span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-200"><span className="text-gray-400">Entry</span> {reqLog?.headers?.["x-entry-protocol"] ?? "-"}</span>
@@ -299,20 +299,19 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
             {(selected.input_tokens > 0 || selected.output_tokens > 0) && (
               <TokenUsageBar input={selected.input_tokens} output={selected.output_tokens} cacheRead={selected.cache_read_tokens ?? 0} cacheWrite={selected.cache_write_tokens ?? 0} />
             )}
-            {/* Route trace */}
-            <RouteTrace trace={selected.route_trace} />
-            {/* Copy cURL */}
-            {reqLog && (
-              <button
-                onClick={() => {
-                  const curl = buildCurl(reqLog);
-                  navigator.clipboard.writeText(curl);
-                }}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 w-fit"
-              >
-                Copy cURL
-              </button>
-            )}
+            {/* Route & cURL */}
+            <div className="flex items-center gap-1 text-xs flex-wrap">
+              <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600">Client</span>
+              <span className="text-gray-300">&rarr;</span>
+              {reqLog && (
+                <CopyNode label="TokenParty" text={buildCurlProxy(reqLog)} className="bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100" />
+              )}
+              <RouteTrace trace={selected.route_trace} providers={providers} />
+              <span className="text-gray-300">&rarr;</span>
+              {reqLog && (
+                <CopyNode label={providers.find((p) => p.id === selected.provider_id)?.name ?? selected.provider_id} text={buildCurlUpstream(reqLog)} className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100" />
+              )}
+            </div>
           </div>
 
           {/* Error banner */}
@@ -461,13 +460,16 @@ function TabButton({ id, label, active, onClick }: { id: string; label: string; 
   );
 }
 
-function buildCurl(reqLog: any): string {
-  const url = reqLog.headers?.["x-target-url"] ?? "";
-  const skipHeaders = new Set(["x-target-url", "x-entry-protocol", "x-provider-type", "x-api-key-index", "x-api-key-used", "x-method", "x-path", "host", "connection", "content-length", "accept-encoding"]);
-  const parts = ["curl -X POST", `'${url}'`];
+const INTERNAL_HEADERS = new Set(["x-target-url", "x-entry-protocol", "x-provider-type", "x-api-key-index", "x-api-key-used", "x-method", "x-path"]);
+const SKIP_HEADERS = new Set([...INTERNAL_HEADERS, "host", "connection", "content-length", "accept-encoding"]);
+
+function buildCurlProxy(reqLog: any): string {
+  const method = reqLog.headers?.["x-method"] ?? "POST";
+  const path = reqLog.headers?.["x-path"] ?? "/v1/chat/completions";
+  const parts = [`curl -X ${method}`, `'http://localhost:3456${path}'`];
   if (reqLog.headers) {
     for (const [k, v] of Object.entries(reqLog.headers)) {
-      if (skipHeaders.has(k.toLowerCase())) continue;
+      if (SKIP_HEADERS.has(k.toLowerCase())) continue;
       parts.push(`-H '${k}: ${v}'`);
     }
   }
@@ -477,7 +479,44 @@ function buildCurl(reqLog: any): string {
   return parts.join(" \\\n  ");
 }
 
-function RouteTrace({ trace }: { trace?: string }) {
+function buildCurlUpstream(reqLog: any): string {
+  const url = reqLog.headers?.["x-target-url"] ?? "";
+  const parts = ["curl -X POST", `'${url}'`];
+  if (reqLog.headers) {
+    for (const [k, v] of Object.entries(reqLog.headers)) {
+      if (SKIP_HEADERS.has(k.toLowerCase())) continue;
+      parts.push(`-H '${k}: ${v}'`);
+    }
+  }
+  if (reqLog.body) {
+    parts.push(`-d '${JSON.stringify(reqLog.body)}'`);
+  }
+  return parts.join(" \\\n  ");
+}
+
+function CopyNode({ label, text, className }: { label: string; text: string; className: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border cursor-pointer ${className}`}
+      title="Click to copy cURL"
+    >
+      {label}
+      {copied ? (
+        <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+      ) : (
+        <svg className="w-3 h-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+      )}
+    </button>
+  );
+}
+
+function RouteTrace({ trace, providers }: { trace?: string; providers: { id: string; name: string }[] }) {
   if (!trace) return null;
   let nodes: { provider: string; status: number | null; latencyMs: number; reason?: string }[];
   try {
@@ -486,29 +525,25 @@ function RouteTrace({ trace }: { trace?: string }) {
     return null;
   }
   if (!nodes || nodes.length === 0) return null;
+  if (nodes.length === 1) return null;
+
+  const nameMap = Object.fromEntries(providers.map((p) => [p.id, p.name]));
 
   return (
-    <div className="flex items-center gap-1 text-xs overflow-x-auto">
-      <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 shrink-0">Client</span>
+    <span className="inline-flex items-center gap-1">
       {nodes.map((node, i) => {
-        const isLast = i === nodes.length - 1;
         const ok = node.status !== null && node.status >= 200 && node.status < 400;
-        const color = ok
-          ? "bg-green-50 border-green-200 text-green-700"
-          : "bg-red-50 border-red-200 text-red-700";
+        const name = nameMap[node.provider] ?? node.provider;
         return (
-          <div key={i} className="flex items-center gap-1 shrink-0">
-            <span className="text-gray-300">&rarr;</span>
-            <span className={`px-1.5 py-0.5 rounded border ${color}`}>
-              {node.provider}
-              {node.status !== null ? ` ${node.status}` : ""}
-              {node.reason ? ` (${node.reason})` : ""}
-              {isLast && node.latencyMs > 0 ? ` ${node.latencyMs}ms` : ""}
+          <span key={i} className="inline-flex items-center gap-1">
+            {i > 0 && <span className="text-gray-300">&rarr;</span>}
+            <span className={ok ? "text-green-600" : "text-red-500"}>
+              {name}{node.reason ? `(${node.reason})` : ""}
             </span>
-          </div>
+          </span>
         );
       })}
-    </div>
+    </span>
   );
 }
 
