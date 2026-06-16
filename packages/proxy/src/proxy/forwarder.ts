@@ -95,6 +95,7 @@ export async function forwardRequest(
     body,
   });
 
+  c.set("recorded", true);
   const token = c.get("authToken");
 
   try {

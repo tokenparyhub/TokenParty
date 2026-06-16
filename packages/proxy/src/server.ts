@@ -7,6 +7,7 @@ import { openaiRoutes } from "./routes/openai.js";
 import { anthropicRoutes } from "./routes/anthropic.js";
 import { apiRoutes } from "./routes/api.js";
 import { userApiRoutes } from "./routes/user-api.js";
+import { accessLogMiddleware } from "./proxy/access-log.js";
 import { registerExtractor } from "./tags/registry.js";
 import { agentDetector } from "./tags/extractors/agent-detector.js";
 import { headerTags } from "./tags/extractors/header-tags.js";
@@ -31,6 +32,9 @@ export function createServer() {
   app.use("/*", cors());
 
   app.get("/health", (c) => c.json({ status: "ok", service: "tokenparty" }));
+
+  app.use("/v1/*", accessLogMiddleware);
+  app.use("/anthropic/*", accessLogMiddleware);
 
   app.route("/v1", openaiRoutes);
   app.route("/anthropic", anthropicRoutes);
