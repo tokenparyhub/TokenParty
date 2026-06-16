@@ -17,6 +17,7 @@ openaiRoutes.get("/models", (c) => {
     data: models.map((id) => ({
       id,
       object: "model",
+      created: 1704067200,
       owned_by: "tokenparty",
     })),
   });

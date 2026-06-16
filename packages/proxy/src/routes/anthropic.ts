@@ -1,13 +1,26 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../proxy/auth.js";
 import { forwardRequest } from "../proxy/forwarder.js";
-import { resolveProvider } from "../proxy/router.js";
+import { resolveProvider, listAvailableModels } from "../proxy/router.js";
 import { anthropicToOpenai } from "../adapters/anthropic-to-openai.js";
 import type { AppEnv } from "../types/env.js";
 
 export const anthropicRoutes = new Hono<AppEnv>();
 
 anthropicRoutes.use("/*", authMiddleware);
+
+anthropicRoutes.get("/v1/models", (c) => {
+  const token = c.get("authToken");
+  const models = listAvailableModels(token);
+  return c.json({
+    data: models.map((id) => ({
+      id,
+      display_name: id,
+      created_at: "2024-01-01T00:00:00Z",
+      type: "model",
+    })),
+  });
+});
 
 anthropicRoutes.post("/v1/messages", async (c) => {
   const token = c.get("authToken");
