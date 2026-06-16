@@ -12,13 +12,17 @@ anthropicRoutes.use("/*", authMiddleware);
 anthropicRoutes.get("/v1/models", (c) => {
   const token = c.get("authToken");
   const models = listAvailableModels(token);
+  const data = models.map((id) => ({
+    id,
+    type: "model",
+    display_name: id,
+    created_at: "2024-01-01T00:00:00Z",
+  }));
   return c.json({
-    data: models.map((id) => ({
-      id,
-      display_name: id,
-      created_at: "2024-01-01T00:00:00Z",
-      type: "model",
-    })),
+    data,
+    has_more: false,
+    first_id: data[0]?.id ?? null,
+    last_id: data[data.length - 1]?.id ?? null,
   });
 });
 
