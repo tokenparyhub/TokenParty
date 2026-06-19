@@ -19,6 +19,26 @@ function getModelId(m: ModelConfig): string {
   return typeof m === "string" ? m : m.id;
 }
 
+// Mirror of router.ts sort keys: priority asc (unset=Infinity), then price asc (unset=Infinity)
+function getModelPriority(m: ModelConfig): number {
+  if (typeof m === "object" && m.priority !== undefined) return m.priority;
+  return Infinity;
+}
+
+function getModelCost(m: ModelConfig): number {
+  if (typeof m === "string") return Infinity;
+  const input = m.inputPrice ?? Infinity;
+  const output = m.outputPrice ?? Infinity;
+  const cost = input + output;
+  return Number.isFinite(cost) ? cost : Infinity;
+}
+
+function getModelPricing(m: ModelConfig): { inputPrice?: number; outputPrice?: number; cacheReadPrice?: number; cacheWritePrice?: number } | undefined {
+  if (typeof m === "string") return undefined;
+  if (m.inputPrice === undefined && m.outputPrice === undefined && m.cacheReadPrice === undefined && m.cacheWritePrice === undefined) return undefined;
+  return { inputPrice: m.inputPrice, outputPrice: m.outputPrice, cacheReadPrice: m.cacheReadPrice, cacheWritePrice: m.cacheWritePrice };
+}
+
 function normalizeModels(models: ModelConfig[]): ModelConfig[] {
   return models.map((m) => {
     if (typeof m === "string") return m;
@@ -41,6 +61,7 @@ export default function Providers() {
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
+  const [view, setView] = useState<"providers" | "routing">("providers");
 
   const load = () => api.getProviders().then(setProviders).catch(console.error);
   useEffect(() => { load(); }, []);
@@ -226,41 +247,64 @@ export default function Providers() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Providers</h2>
         <div className="flex gap-2">
-          {showNewGroupInput ? (
-            <div className="flex gap-1">
-              <input
-                autoFocus
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") createGroup(); if (e.key === "Escape") setShowNewGroupInput(false); }}
-                placeholder="Group name"
-                className="border rounded px-2 py-1.5 text-sm w-36"
-              />
-              <button onClick={createGroup} className="px-3 py-1.5 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">Add</button>
-              <button onClick={() => setShowNewGroupInput(false)} className="px-2 py-1.5 border rounded text-sm">Cancel</button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowNewGroupInput(true)}
-              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
-            >
-              New Group
-            </button>
+          {view === "providers" && (
+            <>
+              {showNewGroupInput ? (
+                <div className="flex gap-1">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") createGroup(); if (e.key === "Escape") setShowNewGroupInput(false); }}
+                    placeholder="Group name"
+                    className="border rounded px-2 py-1.5 text-sm w-36"
+                  />
+                  <button onClick={createGroup} className="px-3 py-1.5 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">Add</button>
+                  <button onClick={() => setShowNewGroupInput(false)} className="px-2 py-1.5 border rounded text-sm">Cancel</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowNewGroupInput(true)}
+                  className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                >
+                  New Group
+                </button>
+              )}
+              <button
+                onClick={() => { setEditing({ type: "openai", models: [], enabled: true }); setIsNew(true); }}
+                className="px-4 py-2 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700"
+              >
+                Add Provider
+              </button>
+            </>
           )}
-          <button
-            onClick={() => { setEditing({ type: "openai", models: [], enabled: true }); setIsNew(true); }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700"
-          >
-            Add Provider
-          </button>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {allGroups.map((g) => renderGroupSection(g, g, false))}
-        {renderGroupSection(UNGROUPED, "Ungrouped", true)}
+      <div className="flex gap-1 mb-4 border-b">
+        <button
+          onClick={() => setView("providers")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${view === "providers" ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          Providers
+        </button>
+        <button
+          onClick={() => setView("routing")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${view === "routing" ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          Model Routing
+        </button>
       </div>
+
+      {view === "routing" ? (
+        <RoutingView providers={providers} onEdit={(p) => { setEditing(p); setIsNew(false); }} />
+      ) : (
+        <div className="space-y-4">
+          {allGroups.map((g) => renderGroupSection(g, g, false))}
+          {renderGroupSection(UNGROUPED, "Ungrouped", true)}
+        </div>
+      )}
 
       {editing && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
@@ -426,6 +470,126 @@ export default function Providers() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Model-centric routing view: groups providers by model id and shows the
+// ordered fallback chain (priority asc, then price asc) exactly as the router
+// resolves it. Lets users see at a glance which providers serve a model, in
+// what order, and what happens on failure.
+function RoutingView({ providers, onEdit }: { providers: Provider[]; onEdit: (p: Provider) => void }) {
+  // Aggregate: model id -> list of { provider, modelConfig }
+  const byModel = new Map<string, { provider: Provider; model: ModelConfig }[]>();
+  for (const p of providers) {
+    for (const m of p.models ?? []) {
+      const id = getModelId(m);
+      if (!id) continue;
+      if (!byModel.has(id)) byModel.set(id, []);
+      byModel.get(id)!.push({ provider: p, model: m });
+    }
+  }
+
+  // Sort each model's candidates the same way router.ts does
+  for (const list of byModel.values()) {
+    list.sort((a, b) => {
+      const prioDiff = getModelPriority(a.model) - getModelPriority(b.model);
+      if (prioDiff !== 0) return prioDiff;
+      return getModelCost(a.model) - getModelCost(b.model);
+    });
+  }
+
+  // Models with more (enabled) providers first — those are the ones with real
+  // fallback chains worth attention.
+  const modelEntries = [...byModel.entries()].sort((a, b) => {
+    const ae = a[1].filter((x) => x.provider.enabled).length;
+    const be = b[1].filter((x) => x.provider.enabled).length;
+    if (be !== ae) return be - ae;
+    return a[0].localeCompare(b[0]);
+  });
+
+  if (modelEntries.length === 0) {
+    return <div className="text-sm text-gray-400 text-center py-12">No models configured.</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-gray-500 bg-indigo-50 border border-indigo-100 rounded px-3 py-2">
+        Each model shows its provider fallback chain in routing order (priority asc, then price asc). On <b>429 / 5xx / network error</b>, the next provider in the chain is tried automatically. Disabled providers are dimmed and skipped.
+      </div>
+      {modelEntries.map(([modelId, list]) => {
+        const enabledCount = list.filter((x) => x.provider.enabled).length;
+        return (
+          <div key={modelId} className="border rounded-lg bg-white overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b">
+              <span className="font-mono font-semibold text-sm">{modelId}</span>
+              <span className="text-xs text-gray-400">·</span>
+              <span className="text-xs text-gray-500">
+                {enabledCount} provider{enabledCount !== 1 ? "s" : ""}
+                {enabledCount > 1 && <span className="ml-1 text-indigo-600">→ fallback chain</span>}
+              </span>
+            </div>
+            <div className="divide-y">
+              {list.map((entry, idx) => {
+                const { provider, model } = entry;
+                const isPrimary = idx === 0 && provider.enabled;
+                const pricing = getModelPricing(model);
+                const prio = getModelPriority(model);
+                const sym = (provider.currency ?? "USD") === "CNY" ? "¥" : "$";
+                return (
+                  <div
+                    key={provider.id}
+                    className={`flex items-center gap-3 px-4 py-2 ${provider.enabled ? "" : "opacity-40"}`}
+                  >
+                    <div className="w-7 text-center shrink-0">
+                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-medium ${isPrimary ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {idx + 1}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{provider.name}</span>
+                        <span className="text-xs text-gray-400 font-mono">{provider.id}</span>
+                        {provider.group && <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-xs">{provider.group}</span>}
+                        {provider.type === "openai" ? (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-xs">openai</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-xs">anthropic</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate mt-0.5">{provider.baseUrl}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs" title="Priority (lower = higher)">
+                        <span className="text-gray-400">prio</span>{" "}
+                        <span className={`font-mono ${prio !== Infinity ? "text-indigo-600 font-medium" : "text-gray-400"}`}>
+                          {prio !== Infinity ? prio : "—"}
+                        </span>
+                      </span>
+                      {pricing ? (
+                        <span className="text-xs font-mono text-gray-500" title="input / output per 1M tokens">
+                          {sym}{pricing.inputPrice ?? "—"} / {sym}{pricing.outputPrice ?? "—"}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400" title="No price configured">no price</span>
+                      )}
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${provider.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {provider.enabled ? "active" : "off"}
+                      </span>
+                      <button onClick={() => onEdit(provider)} className="text-xs text-indigo-600 hover:underline">Edit</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {enabledCount > 1 && (
+              <div className="px-4 py-1.5 bg-gray-50/50 border-t text-xs text-gray-400 flex items-center gap-1">
+                <span className="text-green-600">① primary</span> → on failure → <span className="text-gray-500">② ③ ...</span> tried in order
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
