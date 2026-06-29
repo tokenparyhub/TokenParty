@@ -97,8 +97,14 @@ userApiRoutes.get("/requests", (c) => {
   if (status === "ok") { where += ` AND status = 200`; }
   else if (status === "error") { where += ` AND status != 200`; }
   if (agent) { where += ` AND agent = ?`; params.push(agent); }
-  if (dateFrom) { where += ` AND timestamp >= ?`; params.push(dateFrom + "T00:00:00"); }
-  if (dateTo) { where += ` AND timestamp <= ?`; params.push(dateTo + "T23:59:59"); }
+  if (dateFrom) {
+    const ts = new Date(dateFrom + "T00:00:00").getTime();
+    if (!Number.isNaN(ts)) { where += ` AND timestamp >= ?`; params.push(ts); }
+  }
+  if (dateTo) {
+    const ts = new Date(dateTo + "T23:59:59.999").getTime();
+    if (!Number.isNaN(ts)) { where += ` AND timestamp <= ?`; params.push(ts); }
+  }
   if (tags) {
     for (const tag of tags.split(",").map((t) => t.trim()).filter(Boolean)) {
       where += ` AND custom_tags LIKE ?`;

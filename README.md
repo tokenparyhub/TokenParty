@@ -285,6 +285,10 @@ TokenParty/
 - [x] Model-level priority with ordered fallback chain across providers
 - [x] Route trace — visual routing diagram for each request
 - [x] Upstream model auto-discovery
+- [x] Connection pooling (keep-alive HTTP agents) — prevents TIME_WAIT port exhaustion
+- [x] Provider config validation (rejects invalid baseUrl etc. at save time)
+- [x] Dashboard copy-as-cURL on request route trace
+- [x] Shareable request URLs (filters, pagination, and detail id in URL)
 - [ ] Automatic prompt cache optimization (Anthropic cache_control injection)
 - [ ] Cost savings report ("TokenParty saved you $XX")
 - [ ] Tag-based cost analysis (cost breakdown by project/feature)

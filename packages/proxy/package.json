@@ -1,6 +1,6 @@
 {
   "name": "@tokenparty/tokenparty",
-  "version": "0.0.15",
+  "version": "0.0.17",
   "description": "Self-hosted AI gateway — route, observe, and control your LLM API traffic. OpenAI ↔ Anthropic protocol translation, cost-based smart routing, per-user budgets, and a built-in dashboard. Zero dependencies.",
   "type": "module",
   "bin": {
@@ -17,9 +17,24 @@
     "start": "node dist/index.js"
   },
   "keywords": [
-    "ai", "proxy", "gateway", "api-gateway", "llm", "openai", "anthropic", "claude", "gpt", 
-    "reverse-proxy", "protocol-translation", "token-management", "cost-tracking", 
-    "self-hosted", "dashboard", "budget", "routing", "sqlite"
+    "ai",
+    "proxy",
+    "gateway",
+    "api-gateway",
+    "llm",
+    "openai",
+    "anthropic",
+    "claude",
+    "gpt",
+    "reverse-proxy",
+    "protocol-translation",
+    "token-management",
+    "cost-tracking",
+    "self-hosted",
+    "dashboard",
+    "budget",
+    "routing",
+    "sqlite"
   ],
   "author": "Zhou Zhengchang <zhiye1@hotmail.com>",
   "license": "MIT",

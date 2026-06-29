@@ -1,6 +1,6 @@
 {
   "name": "tokenparty-monorepo",
-  "version": "0.1.0",
+  "version": "0.0.16",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @tokenparty/tokenparty dev",

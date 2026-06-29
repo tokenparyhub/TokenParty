@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatCost, getSettings } from "./Settings";
 import { getAdapterForAgent } from "../lib/agent-adapters";
@@ -20,15 +21,61 @@ const emptyFilters: Filters = { token_id: "", provider_id: "", model: "", status
 const KNOWN_AGENTS = ["claude-code", "codex", "openclaw"];
 
 export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }) {
+  // All view state is mirrored in URL search params so the page can be
+  // refreshed, deep-linked, or shared without losing filters, pagination,
+  // or the open detail panel.
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const filters: Filters = {
+    token_id: searchParams.get("token_id") ?? "",
+    provider_id: searchParams.get("provider_id") ?? "",
+    model: searchParams.get("model") ?? "",
+    status: searchParams.get("status") ?? "",
+    tags: searchParams.get("tags") ?? "",
+    agent: searchParams.get("agent") ?? "",
+    date_from: searchParams.get("date_from") ?? "",
+    date_to: searchParams.get("date_to") ?? "",
+  };
+  const limit = Number(searchParams.get("limit") ?? 20);
+  const offset = Number(searchParams.get("offset") ?? 0);
+  const selectedId = searchParams.get("id");
+
+  const setUrlParams = (patch: Record<string, string | number | null>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "" || v === undefined) next.delete(k);
+        else next.set(k, String(v));
+      }
+      return next;
+    }, { replace: true });
+  };
+
+  const updateFilter = (patch: Partial<Filters>) => {
+    setUrlParams({ ...patch, offset: 0 });
+  };
+  const setLimit = (n: number) => setUrlParams({ limit: n, offset: 0 });
+  const setOffset = (n: number) => setUrlParams({ offset: n });
+  const setSelectedId = (id: string | null) => setUrlParams({ id });
+
   const [requests, setRequests] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<any>(null);
   const [reqSection, setReqSection] = useState("headers");
   const [resSection, setResSection] = useState("headers");
   const [reqCollapsed, setReqCollapsed] = useState(false);
   const [resCollapsed, setResCollapsed] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
+
+  // Restore detail selection from URL on mount / when id changes externally.
+  useEffect(() => {
+    if (selectedId && selected?.id !== selectedId) {
+      loadDetail(selectedId);
+    } else if (!selectedId && selected) {
+      setSelected(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -37,7 +84,7 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
       if (detailRef.current?.contains(target)) return;
       const row = (target as Element).closest?.("tr[data-clickable]");
       if (row) return;
-      setSelected(null);
+      setSelectedId(null);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -53,7 +100,7 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
       const idx = requests.findIndex((r) => r.id === selected.id);
       if (idx === -1) return;
       const next = e.key === "ArrowUp" ? idx - 1 : idx + 1;
-      if (next >= 0 && next < requests.length) loadDetail(requests[next].id);
+      if (next >= 0 && next < requests.length) setSelectedId(requests[next].id);
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -62,8 +109,6 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
   const [keys, setKeys] = useState<{ key: string; name: string }[]>([]);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [models, setModels] = useState<string[]>([]);
-  const [filters, setFilters] = useState<Filters>(emptyFilters);
-  const [limit, setLimit] = useState(20);
 
   useEffect(() => {
     if (mode === "admin") {
@@ -103,12 +148,8 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
         setTotal(res.total);
       }).catch(console.error);
     }
-  }, [offset, limit, filters, mode]);
-
-  const updateFilter = (patch: Partial<Filters>) => {
-    setFilters((prev) => ({ ...prev, ...patch }));
-    setOffset(0);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, mode]);
 
   const hasFilters = Object.values(filters).some(Boolean);
 
@@ -144,59 +185,89 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
       {/* List */}
       <div>
         <h2 className="text-2xl font-bold mb-4">Requests</h2>
-        <div className="flex flex-wrap gap-2 mb-4 items-end">
-          {mode === "admin" && (
-            <select value={filters.token_id} onChange={(e) => updateFilter({ token_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All Users</option>
-              {keys.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+        <div className="mb-4 space-y-2">
+          {/* Row 1: request identity — who/what made the call */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-gray-400 w-14 shrink-0">Target</span>
+            {mode === "admin" && (
+              <select value={filters.token_id} onChange={(e) => updateFilter({ token_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+                <option value="">All Users</option>
+                {keys.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+              </select>
+            )}
+            {mode === "admin" && (
+              <select value={filters.provider_id} onChange={(e) => updateFilter({ provider_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+                <option value="">All Providers</option>
+                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+            <select value={filters.model} onChange={(e) => updateFilter({ model: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+              <option value="">All Models</option>
+              {models.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
-          )}
-          {mode === "admin" && (
-            <select value={filters.provider_id} onChange={(e) => updateFilter({ provider_id: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All Providers</option>
-              {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          )}
-          <select value={filters.model} onChange={(e) => updateFilter({ model: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-            <option value="">All Models</option>
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select value={filters.status} onChange={(e) => updateFilter({ status: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-            <option value="">All Status</option>
-            <option value="ok">Success</option>
-            <option value="error">Error</option>
-          </select>
-          <select value={filters.agent} onChange={(e) => updateFilter({ agent: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
-            <option value="">All Agents</option>
-            {KNOWN_AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <input
-            type="text"
-            placeholder="Tags (comma separated)"
-            value={filters.tags}
-            onChange={(e) => updateFilter({ tags: e.target.value })}
-            className="border rounded px-2 py-1.5 text-sm w-48"
-          />
-          <div className="flex items-center gap-1">
-            <input
-              type="date"
-              value={filters.date_from}
-              onChange={(e) => updateFilter({ date_from: e.target.value })}
-              className="border rounded px-2 py-1.5 text-sm"
-            />
-            <span className="text-gray-400 text-xs">~</span>
-            <input
-              type="date"
-              value={filters.date_to}
-              onChange={(e) => updateFilter({ date_to: e.target.value })}
-              className="border rounded px-2 py-1.5 text-sm"
-            />
           </div>
-          {hasFilters && (
-            <button onClick={() => { setFilters(emptyFilters); setOffset(0); }} className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700">
-              Reset
-            </button>
-          )}
+          {/* Row 2: request conditions — outcome, agent, tags, time */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-gray-400 w-14 shrink-0">Filter</span>
+            <select value={filters.status} onChange={(e) => updateFilter({ status: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+              <option value="">All Status</option>
+              <option value="ok">Success</option>
+              <option value="error">Error</option>
+            </select>
+            <select value={filters.agent} onChange={(e) => updateFilter({ agent: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+              <option value="">All Agents</option>
+              {KNOWN_AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <input
+              type="text"
+              placeholder="Tags (comma separated)"
+              value={filters.tags}
+              onChange={(e) => updateFilter({ tags: e.target.value })}
+              className="border rounded px-2 py-1.5 text-sm w-48"
+            />
+            <div className="flex items-center gap-1">
+              {([["today", "Today"], ["7d", "Last 7d"], ["30d", "Last 30d"], ["all", "All"]] as const).map(([key, label]) => {
+                const today = new Date();
+                const toStr = (d: Date) => d.toISOString().slice(0, 10);
+                let from = "", to = toStr(today);
+                if (key === "today") from = to;
+                else if (key === "7d") from = toStr(new Date(today.getTime() - 6 * 86400000));
+                else if (key === "30d") from = toStr(new Date(today.getTime() - 29 * 86400000));
+                else { from = ""; to = ""; }
+                const active = (key === "all" && !filters.date_from && !filters.date_to) ||
+                  (key !== "all" && filters.date_from === from && filters.date_to === to);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setUrlParams({ date_from: from, date_to: to, offset: 0 })}
+                    className={`px-2 py-1 text-xs rounded border ${active ? "bg-blue-50 border-blue-300 text-blue-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={filters.date_from}
+                onChange={(e) => updateFilter({ date_from: e.target.value })}
+                className="border rounded px-2 py-1.5 text-sm"
+              />
+              <span className="text-gray-400 text-xs">~</span>
+              <input
+                type="date"
+                value={filters.date_to}
+                onChange={(e) => updateFilter({ date_to: e.target.value })}
+                className="border rounded px-2 py-1.5 text-sm"
+              />
+            </div>
+            {hasFilters && (
+              <button onClick={() => setSearchParams(new URLSearchParams(), { replace: true })} className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700">
+                Reset
+              </button>
+            )}
+          </div>
         </div>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="w-full text-sm">
@@ -218,7 +289,7 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
                 <tr
                   key={req.id}
                   data-clickable
-                  onClick={() => loadDetail(req.id)}
+                  onClick={() => setSelectedId(req.id)}
                   className={`border-t cursor-pointer hover:bg-gray-50 ${selected?.id === req.id ? "bg-indigo-50" : ""}`}
                 >
                   <td className="px-3 py-2 whitespace-nowrap">{new Date(req.timestamp).toLocaleString()}</td>
@@ -244,7 +315,7 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
           <div className="flex items-center gap-2 text-gray-500">
             <select
               value={limit}
-              onChange={(e) => { setLimit(Number(e.target.value)); setOffset(0); }}
+              onChange={(e) => setLimit(Number(e.target.value))}
               className="border rounded px-1 py-0.5 text-sm"
             >
               {[20, 50, 100, 200].map((n) => <option key={n} value={n}>{n} / page</option>)}
@@ -261,7 +332,20 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
                 const page = Math.max(1, Math.min(Math.ceil(total / limit), Number(e.target.value) || 1));
                 setOffset((page - 1) * limit);
               }}
-              className="w-14 border rounded px-2 py-0.5 text-center text-sm"
+              onKeyDown={(e) => {
+                // ▲ up arrow = previous page (-1); ▼ = next page (+1).
+                // Native number input flips these, so intercept and re-map.
+                const totalPages = Math.max(1, Math.ceil(total / limit));
+                const current = Math.floor(offset / limit) + 1;
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setOffset((Math.max(1, current - 1) - 1) * limit);
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setOffset((Math.min(totalPages, current + 1) - 1) * limit);
+                }
+              }}
+              className="w-14 border rounded px-2 py-0.5 text-center text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span>/ {Math.max(1, Math.ceil(total / limit))}</span>
           </div>
