@@ -301,16 +301,18 @@ export default function Requests({ mode = "admin" }: { mode?: "admin" | "user" }
             )}
             {/* Route & cURL */}
             <div className="flex items-center gap-1 text-xs flex-wrap">
-              <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600">Client</span>
+              {reqLog && (
+                <CopyNode label="Client" text={buildCurlProxy(reqLog)} className="bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100" />
+              )}
               <span className="text-gray-300">&rarr;</span>
               {reqLog && (
-                <CopyNode label="TokenParty" text={buildCurlProxy(reqLog)} className="bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100" />
+                <CopyNode label="TokenParty" text={buildCurlUpstream(reqLog)} className="bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100" />
               )}
               <RouteTrace trace={selected.route_trace} providers={providers} />
               <span className="text-gray-300">&rarr;</span>
-              {reqLog && (
-                <CopyNode label={providers.find((p) => p.id === selected.provider_id)?.name ?? selected.provider_id} text={buildCurlUpstream(reqLog)} className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100" />
-              )}
+              <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">
+                {providers.find((p) => p.id === selected.provider_id)?.name ?? selected.provider_id}
+              </span>
             </div>
           </div>
 
@@ -496,19 +498,41 @@ function buildCurlUpstream(reqLog: any): string {
 
 function CopyNode({ label, text, className }: { label: string; text: string; className: string }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for non-secure contexts where Clipboard API is unavailable.
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setFailed(false);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setFailed(true);
+      setTimeout(() => setFailed(false), 1500);
+    }
+  };
   return (
     <button
-      onClick={() => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
+      onClick={handleCopy}
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border cursor-pointer ${className}`}
       title="Click to copy cURL"
     >
       {label}
       {copied ? (
         <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+      ) : failed ? (
+        <svg className="w-3 h-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
       ) : (
         <svg className="w-3 h-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
       )}
