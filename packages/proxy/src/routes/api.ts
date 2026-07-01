@@ -376,12 +376,31 @@ apiRoutes.delete("/settings/log-storage", (c) => {
 apiRoutes.post("/restart", async (c) => {
   console.log("[tokenparty] Restart requested via API, restarting...");
   const { spawn } = await import("node:child_process");
+  const path = await import("node:path");
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+
   setTimeout(() => {
+    // Spawn detached so the child survives our exit. We don't inherit stdio:
+    // when we process.exit() the parent's fds close and any stdio: "inherit"
+    // child output would be silently lost. Detach stdio instead so the child
+    // can keep its own stdio (or be redirected by whatever started us).
     const child = spawn(process.execPath, process.argv.slice(1), {
       detached: true,
-      stdio: "inherit",
+      stdio: "ignore",
+      env: { ...process.env, TOKENPARTY_DAEMON: "1" },
     });
     child.unref();
+
+    // Refresh the PID file so subsequent `tokenparty stop/status` target
+    // the new process instead of the now-dead parent.
+    try {
+      const pidFile = path.join(os.homedir(), ".tokenparty", "tokenparty.pid");
+      fs.writeFileSync(pidFile, String(child.pid));
+    } catch (e) {
+      console.error("[tokenparty] Failed to write PID file:", e);
+    }
+
     process.exit(0);
   }, 500);
   return c.json({ status: "restarting" });

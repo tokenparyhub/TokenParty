@@ -2,6 +2,18 @@
 
 All notable changes to TokenParty are documented here.
 
+## [Unreleased]
+
+### Fixed
+- `tokenparty restart` command entered an infinite respawn loop because
+  `daemonStart` filtered the literal `"start"` from child argv but not
+  `"restart"`, so the spawned child re-entered the restart branch.
+- `POST /api/restart` left the PID file stale (parent's old PID) so
+  subsequent `tokenparty stop`/`status` targeted a dead process; the
+  endpoint now refreshes the PID file with the new child's PID and
+  detaches stdio so the parent's exit doesn't strand the child's
+  output.
+
 ## [0.0.17] - 2026-06-29
 
 ### Added

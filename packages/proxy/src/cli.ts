@@ -242,7 +242,10 @@ if (command === "restart") {
 }
 
 function daemonStart() {
-  const daemonArgs = process.argv.slice(1).filter((a) => a !== "start");
+  // Strip the subcommand (start/restart/...) from the child argv so the
+  // child runs in foreground mode. Without this, `tokenparty restart`
+  // re-enters the restart branch and recursively spawns itself forever.
+  const daemonArgs = process.argv.slice(1).filter((a) => a !== command);
   const out = fs.openSync(logFile, "a");
 
   const child = spawn(process.execPath, daemonArgs, {
