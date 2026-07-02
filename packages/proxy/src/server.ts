@@ -44,6 +44,11 @@ export function createServer() {
   const dashboardRoot = findDashboardRoot();
   if (dashboardRoot) {
     app.use("/assets/*", serveStatic({ root: dashboardRoot }));
+    // Root-level static assets copied from vite's public/ directory must be
+    // served before the SPA catch-all, otherwise the catch-all returns
+    // index.html for /favicon.png instead of the PNG.
+    app.get("/favicon.png", serveStatic({ path: "favicon.png", root: dashboardRoot }));
+    app.get("/favicon-64.png", serveStatic({ path: "favicon-64.png", root: dashboardRoot }));
     app.get("*", (c) => {
       const filePath = path.join(dashboardRoot, "index.html");
       const html = fs.readFileSync(filePath, "utf-8");

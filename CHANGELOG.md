@@ -13,6 +13,10 @@ All notable changes to TokenParty are documented here.
   endpoint now refreshes the PID file with the new child's PID and
   detaches stdio so the parent's exit doesn't strand the child's
   output.
+- Dashboard favicon (`/favicon.png`, `/favicon-64.png`) was served as
+  `index.html` because only `/assets/*` had a static route and the
+  catch-all swallowed every other path; added explicit serveStatic
+  routes for the favicons ahead of the SPA catch-all.
 
 ## [0.0.17] - 2026-06-29
 
